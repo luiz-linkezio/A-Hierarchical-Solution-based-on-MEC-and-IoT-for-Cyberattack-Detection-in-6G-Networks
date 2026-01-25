@@ -3,7 +3,7 @@
 
 This report presents a complete exploratory analysis of the CIC_APT_IIoT_2024 dataset.
 
-**Analysis Date**: 2026-01-25 20:30:53
+**Analysis Date**: 2026-01-25 20:37:10
 **Dataset**: CIC_APT_IIoT_2024
 **Sample Size**: 43,198,438 records
 
@@ -152,6 +152,21 @@ Total: 70 features
 
 ## 4. Class Distribution Analysis
 
+### Distribution of column 'label'
+
+| Class | Count | Percent |
+|-------|-------|----------|
+| 0 | 43,196,430 | 100.00% |
+| 1 | 2,008 | 0.00% |
+
+**Summary:**
+- **Total classes**: 2
+- **Most frequent class**: 0 (100.00%)
+- **Least frequent class**: 1 (0.00%)
+- **Imbalance ratio**: 21512.17:1
+
+⚠️ **Highly imbalanced dataset!**
+
 ### Distribution of column 'subLabel'
 
 | Class | Count | Percent |
@@ -174,6 +189,45 @@ Total: 70 features
 
 ⚠️ **Highly imbalanced dataset!**
 
+### Distribution of column 'subLabelCat'
+
+| Class | Count | Percent |
+|-------|-------|----------|
+| 0 | 43,196,430 | 100.00% |
+| find files | 512 | 0.00% |
+| create staging directory | 392 | 0.00% |
+| stage sensitive files | 240 | 0.00% |
+| create a new user in linux | 88 | 0.00% |
+| advanced file search and stager | 84 | 0.00% |
+| dump credentials from firefox browser | 60 | 0.00% |
+| linux download file and run | 56 | 0.00% |
+| compress staged directory | 56 | 0.00% |
+| scan wifi networks | 52 | 0.00% |
+| capture linux desktop | 48 | 0.00% |
+| system owner/user discovery | 28 | 0.00% |
+| start sandcat | 28 | 0.00% |
+| permission groups discovery | 28 | 0.00% |
+| network interface configuration | 28 | 0.00% |
+| list os information | 28 | 0.00% |
+| list directory | 28 | 0.00% |
+| find local users | 28 | 0.00% |
+| extract password with grep | 28 | 0.00% |
+| exfil staged directory | 28 | 0.00% |
+| dump history | 28 | 0.00% |
+| download sandcat and lazagne | 28 | 0.00% |
+| collect arp details | 28 | 0.00% |
+| check python | 28 | 0.00% |
+| add or copy content to clipboard | 28 | 0.00% |
+| add command | 28 | 0.00% |
+
+**Summary:**
+- **Total classes**: 26
+- **Most frequent class**: 0 (100.00%)
+- **Least frequent class**: add command (0.00%)
+- **Imbalance ratio**: 1542729.64:1
+
+⚠️ **Highly imbalanced dataset!**
+
 ---
 
 ## 5. Feature Analysis and Correlations
@@ -184,21 +238,11 @@ Total: 70 features
 
 ---
 
-## 6. Executive Summary
-
-This analysis presented a complete exploratory analysis of the dataset, covering:
-
-1. ✅ **Initial Characterization**: Dimensions, data types and database storage size
-2. ✅ **Data Quality**: Missing values, duplicates and completeness
-3. ✅ **Descriptive Statistics**: Analysis of numeric and categorical features
-4. ✅ **Class Distribution**: Balance and frequencies
-5. ✅ **Feature Analysis**: Cardinality and variance
-
 ### Key Findings
 
 1. **Data Quality**: Needs attention - 100.00% completeness, 0 missing values, 21,599,219 duplicates
 2. **Data Types**: 1 unique data types - 70 categorical, 0 numeric
-3. **Class Distribution**: 9 classes found in 'subLabel'
+3. **Class Distribution**: 2 classes found in 'label'
 4. **High Cardinality**: 0 features with >90% unique values
 
 ### Suggested Next Steps
@@ -217,7 +261,7 @@ This analysis presented a complete exploratory analysis of the dataset, covering
 - **Sample Size**: 43,198,438 records
 - **Total Features**: 70
 - **Database Size**: 34865.78 MB
-- **Analysis Date**: 2026-01-25 20:31:21
+- **Analysis Date**: 2026-01-25 20:38:10
 - **Database**: SQLite (`../data/sqlite/data.db`)
 
 ---
