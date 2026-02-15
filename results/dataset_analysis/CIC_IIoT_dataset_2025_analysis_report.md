@@ -3,7 +3,7 @@
 
 This report presents a complete exploratory analysis of the CIC_IIoT_dataset_2025 dataset.
 
-**Analysis Date**: 2026-02-15 13:29:26
+**Analysis Date**: 2026-02-15 13:49:33
 **Dataset**: CIC_IIoT_dataset_2025
 **Sample Size**: 685,671 records
 
@@ -175,8 +175,57 @@ Total: 94 features
 | network_mss_min | 685,671 | 266.6931 | 562.4755 | 0.0 | 1460.0 |
 | network_window-size_max | 685,671 | 26553.0249 | 31060.321 | 0.0 | 65535.0 |
 | network_ips_src_count | 685,671 | 3.5791 | 6.484 | 0.0 | 78.0 |
-
-*Showing top 20 of 71 numeric-like features*
+| network_tcp-flags_avg | 685,671 | 8.9136 | 9.2168 | 0.0 | 208.3478 |
+| network_tcp-flags-rst_count | 685,671 | 5419.6583 | 58071.4352 | 0.0 | 1486432.0 |
+| network_ip-length_avg | 685,671 | 116.7877 | 218.6081 | 0.0 | 2481.8333 |
+| network_ports_dst_count | 685,671 | 853.2226 | 5631.3971 | 0.0 | 65916.0 |
+| network_macs_dst_count | 685,671 | 3.3732 | 5.8305 | 0.0 | 45.0 |
+| network_header-length_max | 685,671 | 14.4844 | 8.9508 | 0.0 | 24.0 |
+| network_payload-length_std_deviation | 685,671 | 64.5199 | 165.2928 | 0.0 | 2177.1326 |
+| network_tcp-flags_max | 685,671 | 16.9472 | 100.7973 | 0.0 | 2242.0 |
+| network_window-size_min | 685,671 | 1531.8094 | 3768.6067 | 0.0 | 65535.0 |
+| network_interval-packets | 685,671 | 153.7965 | 461.8239 | 0.0 | 9471.0 |
+| network_fragmented-packets | 685,671 | 1007.2407 | 6331.1532 | 0.0 | 69251.0 |
+| log_messages_count | 685,671 | 1.8951 | 6.65 | 0.0 | 206.0 |
+| network_tcp-flags-psh_count | 685,671 | 3149.4591 | 39898.0425 | 0.0 | 1144412.0 |
+| network_tcp-flags_std_deviation | 685,671 | 2.8807 | 8.6968 | 0.0 | 627.6989 |
+| network_payload-length_max | 685,671 | 363.6184 | 811.4909 | 0.0 | 11584.0 |
+| network_ip-length_min | 685,671 | 63.6069 | 105.0832 | 0.0 | 1076.0 |
+| log_data-ranges_min | 685,671 | 57.3982 | 210.0542 | -0.94 | 2000.0 |
+| network_packet-size_std_deviation | 685,671 | 72.054 | 170.4643 | 0.0 | 2178.2776 |
+| log_data-ranges_std_deviation | 685,671 | 1.2542 | 16.1927 | 0.0 | 828.1889 |
+| network_header-length_avg | 685,671 | 14.4783 | 8.9455 | 0.0 | 24.0 |
+| log_data-ranges_avg | 685,671 | 59.8387 | 215.6092 | 0.0 | 2000.0 |
+| network_tcp-flags-ack_count | 685,671 | 4819.9003 | 42086.3376 | 0.0 | 1149957.0 |
+| network_ttl_avg | 685,671 | 97.4668 | 83.3519 | 0.0 | 255.0 |
+| network_fragmentation-score | 685,671 | 0.4664 | 2.2919 | 0.0 | 13.08 |
+| network_protocols_all_count | 685,671 | 1.9906 | 1.7959 | 0.0 | 34.0 |
+| network_mss_avg | 685,671 | 270.9329 | 567.0857 | 0.0 | 1460.0 |
+| log_interval-messages | 685,671 | 133.5741 | 346.989 | 0.0 | 9995.0 |
+| network_mss_std_deviation | 685,671 | 0.76 | 14.0911 | 0.0 | 591.3716 |
+| network_packets_dst_count | 685,671 | 26906.9448 | 115622.6209 | 0.0 | 1487601.0 |
+| network_packets_src_count | 685,671 | 1884.8546 | 15513.8198 | 0.0 | 637142.0 |
+| network_protocols_dst_count | 685,671 | 1.3913 | 1.6147 | 0.0 | 33.0 |
+| network_tcp-flags-fin_count | 685,671 | 4499.0201 | 57348.4759 | 0.0 | 1486432.0 |
+| network_ttl_std_deviation | 685,671 | 33.4951 | 43.7257 | 0.0 | 127.0 |
+| network_ip-length_max | 685,671 | 381.6436 | 805.1209 | 0.0 | 11636.0 |
+| network_payload-length_min | 685,671 | 38.5296 | 106.8489 | 0.0 | 1024.0 |
+| network_tcp-flags-syn_count | 685,671 | 4148.8099 | 40906.3785 | 0.0 | 1169727.0 |
+| network_time-delta_max | 685,671 | 0.036 | 0.0512 | -0.0 | 0.4722 |
+| network_ttl_min | 685,671 | 64.9581 | 74.8005 | 0.0 | 255.0 |
+| log_data-ranges_max | 685,671 | 61.4138 | 218.0694 | 0.0 | 2000.0 |
+| network_ports_all_count | 685,671 | 3955.8936 | 14193.3612 | 0.0 | 65916.0 |
+| network_tcp-flags-urg_count | 685,671 | 0.0221 | 0.5324 | 0.0 | 33.0 |
+| network_protocols_src_count | 685,671 | 1.5337 | 1.416 | 0.0 | 14.0 |
+| network_window-size_std_deviation | 685,671 | 9733.2781 | 13042.4712 | 0.0 | 32767.5 |
+| network_header-length_min | 685,671 | 14.4771 | 8.9447 | 0.0 | 24.0 |
+| network_time-delta_min | 685,671 | 0.0032 | 0.0144 | -0.0 | 0.4091 |
+| network_packets_all_count | 685,671 | 28791.7993 | 119716.2588 | 0.0 | 1487727.0 |
+| network_ttl_max | 685,671 | 150.3535 | 116.0116 | 0.0 | 255.0 |
+| network_packet-size_max | 685,671 | 400.5294 | 803.4609 | 0.0 | 11650.0 |
+| network_window-size_avg | 685,671 | 11033.8624 | 15960.2888 | 0.0 | 65535.0 |
+| network_macs_src_count | 685,671 | 3.3732 | 5.8305 | 0.0 | 45.0 |
+| network_packet-size_min | 685,671 | 67.4747 | 83.9698 | 0.0 | 1090.0 |
 
 ### Descriptive Statistics - Categorical Features
 
@@ -202,8 +251,9 @@ Total: 94 features
 | network_ports_all | 685671 | 205883 | [] | 30.05% |
 | network_ports_dst | 685671 | 186137 | [] | 30.05% |
 | network_ports_src | 685671 | 202188 | [] | 30.05% |
-
-*Showing top 20 of 23 categorical features*
+| network_protocols_all | 685671 | 7082 | [] | 20.03% |
+| network_protocols_dst | 685671 | 4879 | [] | 29.14% |
+| network_protocols_src | 685671 | 2309 | [] | 24.12% |
 
 ### Numeric features - Distributions and boxplots
 
@@ -215,7 +265,15 @@ Total: 94 features
 
 ## 4. Class Distribution Analysis
 
-### Distribution of column 'label_full'
+### Number of classification columns (label column)
+
+- **label_full**
+- **label1**
+- **label2**
+- **label3**
+- **label4**
+
+#### Distribution of column 'label_full'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -1165,7 +1223,7 @@ Total: 94 features
 
 ⚠️ **Highly imbalanced dataset!**
 
-### Distribution of column 'label1'
+#### Distribution of column 'label1'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -1180,7 +1238,7 @@ Total: 94 features
 
 ✓ **Relatively balanced dataset**
 
-### Distribution of column 'label2'
+#### Distribution of column 'label2'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -1201,7 +1259,7 @@ Total: 94 features
 
 ⚠️ **Highly imbalanced dataset!**
 
-### Distribution of column 'label3'
+#### Distribution of column 'label3'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -1275,7 +1333,7 @@ Total: 94 features
 
 ⚠️ **Highly imbalanced dataset!**
 
-### Distribution of column 'label4'
+#### Distribution of column 'label4'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -1403,24 +1461,13 @@ Total: 94 features
 2. **Data Types**: 3 unique data types - 23 categorical, 71 numeric
 3. **Class Distribution**: 937 classes found in 'label_full'
 4. **High Cardinality**: 0 features with >90% unique values
-
-### Suggested Next Steps
-
-1. **Data Type Conversion**: Convert numeric features from string to appropriate numeric types
-2. **Feature Engineering**: Remove constant features, consider dimensionality reduction for high-cardinality features
-3. **Data Loading**: Investigate if additional data needs to be loaded
-4. **Temporal Analysis**: Analyze patterns over time using timestamp features
-5. **Preprocessing**: Prepare data for modeling with appropriate encoding strategies
-
----
-
 ## Appendix: Dataset Information
 
 - **Dataset**: CIC_IIoT_dataset_2025
 - **Sample Size**: 685,671 records
 - **Total Features**: 94
 - **Database Size**: 36565.76 MB
-- **Analysis Date**: 2026-02-15 13:29:28
+- **Analysis Date**: 2026-02-15 13:49:35
 - **Database**: SQLite---
 
 *Report generated from dataset_analysis.ipynb notebook*
