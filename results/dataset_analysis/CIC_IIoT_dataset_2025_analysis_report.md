@@ -3,7 +3,7 @@
 
 This report presents a complete exploratory analysis of the CIC_IIoT_dataset_2025 dataset.
 
-**Analysis Date**: 2026-02-15 13:49:33
+**Analysis Date**: 2026-02-15 15:05:34
 **Dataset**: CIC_IIoT_dataset_2025
 **Sample Size**: 685,671 records
 
@@ -265,7 +265,7 @@ Total: 94 features
 
 ## 4. Class Distribution Analysis
 
-### Number of classification columns (label column)
+### Number of classification columns (label column):
 
 - **label_full**
 - **label1**
@@ -1467,7 +1467,7 @@ Total: 94 features
 - **Sample Size**: 685,671 records
 - **Total Features**: 94
 - **Database Size**: 36565.76 MB
-- **Analysis Date**: 2026-02-15 13:49:35
+- **Analysis Date**: 2026-02-15 15:05:36
 - **Database**: SQLite---
 
 *Report generated from dataset_analysis.ipynb notebook*
