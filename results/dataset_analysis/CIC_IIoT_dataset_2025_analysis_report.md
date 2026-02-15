@@ -3,7 +3,7 @@
 
 This report presents a complete exploratory analysis of the CIC_IIoT_dataset_2025 dataset.
 
-**Analysis Date**: 2026-02-11 01:55:30
+**Analysis Date**: 2026-02-15 00:32:19
 **Dataset**: CIC_IIoT_dataset_2025
 **Sample Size**: 685,671 records
 
@@ -151,26 +151,26 @@ Total: 94 features
 
 | Column | Count | Mean | Std | Min | Max |
 |--------|-------|------|-----|-----|-----|
-| network_time-delta_avg | 685,671 | 0.0095 | 0.0176 | -0.0 | 0.4091 |
-| network_protocols_src_count | 685,671 | 1.5337 | 1.416 | 0.0 | 14.0 |
-| network_tcp-flags-psh_count | 685,671 | 3149.4591 | 39898.0425 | 0.0 | 1144412.0 |
-| network_ttl_max | 685,671 | 150.3535 | 116.0116 | 0.0 | 255.0 |
-| network_ips_dst_count | 685,671 | 5.9807 | 23.622 | 0.0 | 260.0 |
-| network_payload-length_avg | 685,671 | 111.7519 | 298.7817 | 0.0 | 2429.8333 |
-| network_ip-length_avg | 685,671 | 116.7877 | 218.6081 | 0.0 | 2481.8333 |
-| network_fragmentation-score | 685,671 | 0.4664 | 2.2919 | 0.0 | 13.08 |
-| log_data-ranges_min | 685,671 | 57.3982 | 210.0542 | -0.94 | 2000.0 |
-| network_packets_src_count | 685,671 | 1884.8546 | 15513.8198 | 0.0 | 637142.0 |
-| network_ips_src_count | 685,671 | 3.5791 | 6.484 | 0.0 | 78.0 |
-| network_mss_min | 685,671 | 266.6931 | 562.4755 | 0.0 | 1460.0 |
-| network_header-length_max | 685,671 | 14.4844 | 8.9508 | 0.0 | 24.0 |
-| log_interval-messages | 685,671 | 133.5741 | 346.989 | 0.0 | 9995.0 |
-| network_ip-flags_max | 685,671 | 1.0606 | 0.9819 | 0.0 | 2.0 |
-| network_packets_dst_count | 685,671 | 26906.9448 | 115622.6209 | 0.0 | 1487601.0 |
-| network_ttl_avg | 685,671 | 97.4668 | 83.3519 | 0.0 | 255.0 |
-| network_tcp-flags-ack_count | 685,671 | 4819.9003 | 42086.3376 | 0.0 | 1149957.0 |
+| network_ip-length_max | 685,671 | 381.6436 | 805.1209 | 0.0 | 11636.0 |
 | network_window-size_avg | 685,671 | 11033.8624 | 15960.2888 | 0.0 | 65535.0 |
 | network_tcp-flags_max | 685,671 | 16.9472 | 100.7973 | 0.0 | 2242.0 |
+| network_time-delta_std_deviation | 685,671 | 0.0085 | 0.0139 | 0.0 | 0.228 |
+| network_header-length_std_deviation | 685,671 | 0.0016 | 0.0512 | 0.0 | 2.0 |
+| network_mss_avg | 685,671 | 270.9329 | 567.0857 | 0.0 | 1460.0 |
+| network_tcp-flags-psh_count | 685,671 | 3149.4591 | 39898.0425 | 0.0 | 1144412.0 |
+| network_packet-size_std_deviation | 685,671 | 72.054 | 170.4643 | 0.0 | 2178.2776 |
+| network_tcp-flags_avg | 685,671 | 8.9136 | 9.2168 | 0.0 | 208.3478 |
+| network_ports_src_count | 685,671 | 3595.0081 | 13643.5846 | 0.0 | 65916.0 |
+| network_tcp-flags_std_deviation | 685,671 | 2.8807 | 8.6968 | 0.0 | 627.6989 |
+| network_ttl_max | 685,671 | 150.3535 | 116.0116 | 0.0 | 255.0 |
+| network_mss_min | 685,671 | 266.6931 | 562.4755 | 0.0 | 1460.0 |
+| log_data-ranges_avg | 685,671 | 59.8387 | 215.6092 | 0.0 | 2000.0 |
+| network_ip-length_std_deviation | 685,671 | 69.6534 | 178.6035 | 0.0 | 2178.2776 |
+| network_packet-size_max | 685,671 | 400.5294 | 803.4609 | 0.0 | 11650.0 |
+| network_tcp-flags-syn_count | 685,671 | 4148.8099 | 40906.3785 | 0.0 | 1169727.0 |
+| network_macs_src_count | 685,671 | 3.3732 | 5.8305 | 0.0 | 45.0 |
+| network_ttl_std_deviation | 685,671 | 33.4951 | 43.7257 | 0.0 | 127.0 |
+| network_window-size_max | 685,671 | 26553.0249 | 31060.321 | 0.0 | 65535.0 |
 
 *Showing top 20 of 71 numeric-like features*
 
@@ -1402,7 +1402,7 @@ Total: 94 features
 - **Sample Size**: 685,671 records
 - **Total Features**: 94
 - **Database Size**: 17416.53125 MB
-- **Analysis Date**: 2026-02-11 01:55:32
+- **Analysis Date**: 2026-02-15 00:32:21
 - **Database**: SQLite (`../data/sqlite/data.db`)
 
 ---
