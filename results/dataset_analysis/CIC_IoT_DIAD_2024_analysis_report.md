@@ -3,7 +3,7 @@
 
 This report presents a complete exploratory analysis of the CIC_IoT_DIAD_2024 dataset.
 
-**Analysis Date**: 2026-02-10 08:23:36
+**Analysis Date**: 2026-02-17 09:23:45
 **Dataset**: CIC_IoT_DIAD_2024
 **Sample Size**: 55,619,998 records
 
@@ -16,11 +16,13 @@ This report presents a complete exploratory analysis of the CIC_IoT_DIAD_2024 da
 - **Columns**: 84
 
 ### Database Storage Size
-- **Total database size**: 53576.82 MB
-- **Average size per row**: ~1010.06 bytes
+- **Total database size**: 36565.76 MB
+- **Average size per row**: ~689.36 bytes
 
 ### Data Types
-- **string**: 84 columns
+- **string**: 5 columns
+- **int**: 34 columns
+- **float**: 45 columns
 
 ### Column Names
 Total: 84 features
@@ -117,7 +119,11 @@ Total: 84 features
 ### General Summary
 - **Columns with missing values**: 1
 - **Total missing values**: 172,710
-- **Average completeness percentage**: 100.00%
+- **Average completeness percentage**: 99.99%
+
+### Missing values visualization
+
+![Missing values per column and completeness distribution](../images/CIC_IoT_DIAD_2024_missing_values.png)
 
 ### Duplicate Analysis
 
@@ -132,68 +138,118 @@ Total: 84 features
 ## 3. Descriptive Statistics
 
 ### Feature Classification
-- **Numeric**: 0
-- **Categorical**: 84
+- **Numeric**: 79
+- **Categorical**: 5
 
 ### Descriptive Statistics - Numeric-Like Features (Mean, Std, Min, Max)
 
 | Column | Count | Mean | Std | Min | Max |
 |--------|-------|------|-----|-----|-----|
-| Flow ID | 55,619,998 | 191.2291 | 12.0442 | 0.0 | 223.109 |
-| Src IP | 55,619,998 | 191.2291 | 12.0442 | 0.0 | 223.109 |
-| Src Port | 55,619,998 | 31910.455 | 20263.114 | 0.0 | 65535.0 |
-| Dst IP | 55,619,998 | 187.8363 | 26.0558 | 0.0 | 255.255 |
-| Dst Port | 55,619,998 | 13031.0522 | 18001.1103 | 0.0 | 65535.0 |
-| Protocol | 55,619,998 | 8.4554 | 4.6008 | 0.0 | 17.0 |
-| Timestamp | 55,619,998 | 7.2559 | 6.5943 | 2.0 | 29.0 |
+| Fwd Seg Size Min | 55,619,998 | 19.0849 | 7.7025 | 0.0 | 60.0 |
+| Flow Packets/s | 55,619,998 | inf |  | -16.2454 | inf |
+| Packet Length Variance | 55,619,998 | 31257.634 | 153143.9764 | 0.0 | 21761681.5714 |
+| Bwd Packet/Bulk Avg | 55,619,998 | 8.6522 | 101.4626 | 0.0 | 80559.0 |
+| Flow IAT Std | 55,619,998 | 2493531.0933 | 4771304.807 | 0.0 | 84848211.1843 |
+| Fwd Header Length | 55,619,998 | 242.0608 | 1801.1296 | 0.0 | 4317472.0 |
 | Flow Duration | 55,619,998 | 61731415.491 | 48007036.3948 | -123420.0 | 120000000.0 |
+| CWR Flag Count | 55,619,998 | 0.0004 | 0.024 | 0.0 | 20.0 |
+| Down/Up Ratio | 55,619,998 | 0.6682 | 27.9493 | 0.0 | 95656.0 |
+| Flow IAT Mean | 55,619,998 | 8839243.7521 | 16433568.7423 | -123420.0 | 119999999.0 |
+| Src Port | 55,619,998 | 31910.455 | 20263.114 | 0.0 | 65535.0 |
 | Total Fwd Packet | 55,619,998 | 46.7984 | 3171.354 | 1.0 | 1499573.0 |
-| Total Bwd packets | 55,619,998 | 4.1767 | 1094.5849 | 0.0 | 1209556.0 |
-| Total Length of Fwd Packet | 55,619,998 | 869.3578 | 37444.5237 | 0.0 | 57073142.0 |
-| Total Length of Bwd Packet | 55,619,998 | 194.4957 | 50904.4448 | 0.0 | 116437870.0 |
-| Fwd Packet Length Max | 55,619,998 | 141.7459 | 441.1321 | 0.0 | 52128.0 |
-| Fwd Packet Length Min | 55,619,998 | 114.497 | 358.16 | 0.0 | 5544.0 |
-| Fwd Packet Length Mean | 55,619,998 | 122.6381 | 365.1262 | 0.0 | 5544.0 |
+| Bwd Header Length | 55,619,998 | 31.4543 | 1130.3724 | 0.0 | 2577856.0 |
+| Idle Mean | 55,619,998 | 10227109.7187 | 17065057.0541 | 0.0 | 119999999.0 |
+| ECE Flag Count | 55,619,998 | 0.001 | 0.0818 | 0.0 | 17.0 |
+| Flow Bytes/s | 55,447,288 | inf |  | -1551.4328 | inf |
+| PSH Flag Count | 55,619,998 | 0.2494 | 21.5206 | 0.0 | 68028.0 |
+| Bwd PSH Flags | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Fwd IAT Total | 55,619,998 | 58725094.6074 | 49652391.7566 | 0.0 | 120000000.0 |
 | Fwd Packet Length Std | 55,619,998 | 9.9562 | 83.9286 | 0.0 | 7229.9365 |
+| FIN Flag Count | 55,619,998 | 0.0405 | 0.2399 | 0.0 | 3.0 |
+| URG Flag Count | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Idle Max | 55,619,998 | 13270185.632 | 18444955.7622 | 0.0 | 119999999.0 |
+| Active Min | 55,619,998 | 2357616.8821 | 5407580.7004 | 0.0 | 114839331.0 |
+| Total Bwd packets | 55,619,998 | 4.1767 | 1094.5849 | 0.0 | 1209556.0 |
+| Fwd IAT Max | 55,619,998 | 13130434.3142 | 19151099.7989 | 0.0 | 119999999.0 |
+| Fwd URG Flags | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Fwd Packet Length Mean | 55,619,998 | 122.6381 | 365.1262 | 0.0 | 5544.0 |
+| Fwd Bytes/Bulk Avg | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Packet Length Mean | 55,619,998 | 126.0542 | 346.9324 | 0.0 | 4199.3333 |
+| Packet Length Min | 55,619,998 | 93.8412 | 323.6447 | 0.0 | 2896.0 |
+| Total Length of Bwd Packet | 55,619,998 | 194.4957 | 50904.4448 | 0.0 | 116437870.0 |
+| Bwd Packet Length Mean | 55,619,998 | 37.308 | 215.3298 | 0.0 | 4516.5333 |
+| Fwd Act Data Pkts | 55,619,998 | 10.5237 | 96.5932 | 0.0 | 28653.0 |
+| Subflow Bwd Packets | 55,619,998 | 1.3966 | 619.7247 | 0.0 | 1185560.0 |
+| Fwd Segment Size Avg | 55,619,998 | 122.6381 | 365.1262 | 0.0 | 5544.0 |
+| Subflow Bwd Bytes | 55,619,998 | 31.911 | 11885.3906 | 0.0 | 35545889.0 |
+| Bwd IAT Min | 55,619,998 | 583645.6048 | 4709690.5109 | -517965.0 | 119969935.0 |
+| Bwd Bulk Rate Avg | 55,619,998 | 11685.235 | 1603880.8869 | 0.0 | 1792000000.0 |
+| Bwd IAT Mean | 55,619,998 | 1041476.9807 | 5177591.7568 | -172654.6667 | 119969935.0 |
+| Fwd Packet/Bulk Avg | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Bwd Segment Size Avg | 55,619,998 | 37.308 | 215.3298 | 0.0 | 4516.5333 |
+| Bwd IAT Std | 55,619,998 | 427603.8404 | 2203035.8213 | 0.0 | 84756709.4455 |
+| Subflow Fwd Packets | 55,619,998 | 11.9243 | 1746.3943 | 0.0 | 1499573.0 |
+| ACK Flag Count | 55,619,998 | 1.3957 | 73.9743 | 0.0 | 180786.0 |
+| Flow IAT Min | 55,619,998 | 6461760.1804 | 16549954.9489 | -517965.0 | 119999999.0 |
+| Fwd IAT Std | 55,619,998 | 2016629.3078 | 4375611.6324 | 0.0 | 84848211.1843 |
+| Fwd IAT Min | 55,619,998 | 7377579.3224 | 17537362.2656 | -5.0 | 119999999.0 |
+| SYN Flag Count | 55,619,998 | 7.1093 | 8.4782 | 0.0 | 40.0 |
+| Fwd PSH Flags | 55,619,998 | 0.0064 | 0.0796 | 0.0 | 1.0 |
+| Active Mean | 55,619,998 | 3925398.9335 | 7920220.2659 | 0.0 | 114839331.0 |
+| Dst Port | 55,619,998 | 13031.0522 | 18001.1103 | 0.0 | 65535.0 |
+| Bwd URG Flags | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
 | Bwd Packet Length Max | 55,619,998 | 48.7345 | 276.0483 | 0.0 | 34752.0 |
 | Bwd Packet Length Min | 55,619,998 | 33.6634 | 209.6387 | 0.0 | 4344.0 |
-| Bwd Packet Length Mean | 55,619,998 | 37.308 | 215.3298 | 0.0 | 4516.5333 |
 | Bwd Packet Length Std | 55,619,998 | 5.6928 | 64.2322 | 0.0 | 4231.443 |
-
-*Showing top 20 of 84 numeric-like features*
+| Idle Min | 55,619,998 | 8737987.4919 | 16942995.0827 | 0.0 | 119999999.0 |
+| Bwd Bytes/Bulk Avg | 55,619,998 | 468.7271 | 56540.2559 | 0.0 | 116439320.0 |
+| Bwd Packets/s | 55,619,998 | 52.244 | 6835.4134 | 0.0 | 3000000.0 |
+| Bwd Init Win Bytes | 55,619,998 | 4992.3145 | 14884.688 | 0.0 | 65535.0 |
+| Fwd Packets/s | 55,619,998 | 3587.9535 | 80058.7846 | 0.0 | 8000000.0 |
+| Fwd Packet Length Max | 55,619,998 | 141.7459 | 441.1321 | 0.0 | 52128.0 |
+| Protocol | 55,619,998 | 8.4554 | 4.6008 | 0.0 | 17.0 |
+| Subflow Fwd Bytes | 55,619,998 | 231.796 | 8571.355 | 0.0 | 22073212.0 |
+| Active Std | 55,619,998 | 1917845.1622 | 5018097.733 | 0.0 | 74600223.6204 |
+| Packet Length Max | 55,619,998 | 182.0637 | 500.8267 | 0.0 | 52128.0 |
+| Active Max | 55,619,998 | 5949897.1737 | 12235597.0222 | 0.0 | 114839331.0 |
+| Idle Std | 55,619,998 | 1822208.0057 | 4324687.898 | 0.0 | 77751011.5343 |
+| Fwd IAT Mean | 55,619,998 | 9229202.891 | 17493084.3968 | 0.0 | 119999999.0 |
+| Total Length of Fwd Packet | 55,619,998 | 869.3578 | 37444.5237 | 0.0 | 57073142.0 |
+| Bwd IAT Total | 55,619,998 | 4283750.6326 | 16359008.2311 | -517964.0 | 119999966.0 |
+| RST Flag Count | 55,619,998 | 0.369 | 0.5119 | 0.0 | 2.0 |
+| Bwd IAT Max | 55,619,998 | 1569573.0342 | 6766850.4489 | 0.0 | 119969935.0 |
+| Flow IAT Max | 55,619,998 | 13412014.0982 | 18352497.3543 | -123420.0 | 119999999.0 |
+| FWD Init Win Bytes | 55,619,998 | 7821.5722 | 18080.0852 | 0.0 | 65535.0 |
+| Fwd Bulk Rate Avg | 55,619,998 | 0.0 | 0.0 | 0.0 | 0.0 |
+| Packet Length Std | 55,619,998 | 40.8627 | 172.0113 | 0.0 | 4664.9418 |
+| Fwd Packet Length Min | 55,619,998 | 114.497 | 358.16 | 0.0 | 5544.0 |
+| Average Packet Size | 55,619,998 | 177.6888 | 512.9727 | 0.0 | 6299.0 |
 
 ### Descriptive Statistics - Categorical Features
 
-| Column | Count | Unique_Values | Mode | Mode_Frequency | Mode_Percent |
-|--------|-------|---------------|------|----------------|-------------|
-| Flow ID | 55619998 | 7902693 | 8.6.0.1-8.0.6.4-0-0-0 | 7,094 | 0.01% |
-| Src IP | 55619998 | 7129 | 192.168.137.182 | 18,596,068 | 33.43% |
-| Src Port | 55619998 | 65536 | 4070 | 2,501,614 | 4.50% |
-| Dst IP | 55619998 | 12142 | 192.168.137.182 | 3,763,472 | 6.77% |
-| Dst Port | 55619998 | 65536 | 6668 | 12,414,798 | 22.32% |
-| Protocol | 55619998 | 3 | 6 | 43,046,802 | 77.39% |
-| Timestamp | 55619998 | 374033 | 10/08/2022 10:16:07 AM | 42,022 | 0.08% |
-| Flow Duration | 55619998 | 11429977 | 0 | 179,466 | 0.32% |
-| Total Fwd Packet | 55619998 | 9133 | 1 | 10,867,218 | 19.54% |
-| Total Bwd packets | 55619998 | 2729 | 0 | 33,331,058 | 59.93% |
-| Total Length of Fwd Packet | 55619998 | 50570 | 0.0 | 39,817,454 | 71.59% |
-| Total Length of Bwd Packet | 55619998 | 22861 | 0.0 | 50,416,628 | 90.64% |
-| Fwd Packet Length Max | 55619998 | 4108 | 0.0 | 39,817,454 | 71.59% |
-| Fwd Packet Length Min | 55619998 | 1418 | 0.0 | 41,716,888 | 75.00% |
-| Fwd Packet Length Mean | 55619998 | 125464 | 0.0 | 39,817,454 | 71.59% |
-| Fwd Packet Length Std | 55619998 | 203937 | 0.0 | 53,402,062 | 96.01% |
-| Bwd Packet Length Max | 55619998 | 3244 | 0.0 | 50,405,188 | 90.62% |
-| Bwd Packet Length Min | 55619998 | 1134 | 0.0 | 51,582,424 | 92.74% |
-| Bwd Packet Length Mean | 55619998 | 62393 | 0.0 | 50,405,188 | 90.62% |
-| Bwd Packet Length Std | 55619998 | 94523 | 0.0 | 54,256,256 | 97.55% |
+| Column | Count | Unique_Values | Mode | Mode_% |
+|--------|-------|---------------|------|-------|
+| Flow ID | 55619998 | 7902693 | 8.6.0.1-8.0.6.4-0-0-0 | 0.01% |
+| Src IP | 55619998 | 7129 | 192.168.137.182 | 33.43% |
+| Dst IP | 55619998 | 12142 | 192.168.137.182 | 6.77% |
+| Timestamp | 55619998 | 374033 | 10/08/2022 10:16:07 AM | 0.08% |
+| Label | 55619998 | 1 | NeedManualLabel | 100.00% |
 
-*Showing top 20 of 84 categorical features*
+### Numeric features - Distributions and boxplots
+
+![Numeric features distributions](../images/CIC_IoT_DIAD_2024_numeric_distributions.png)
+
+![Boxplots - outlier detection](../images/CIC_IoT_DIAD_2024_boxplots.png)
 
 ---
 
 ## 4. Class Distribution Analysis
 
-### Distribution of column 'Label'
+### Number of classification columns (label column):
+
+- **Label**
+
+#### Distribution of column 'Label'
 
 | Class | Count | Percent |
 |-------|-------|----------|
@@ -207,47 +263,37 @@ Total: 84 features
 
 ✓ **Relatively balanced dataset**
 
+### Class distribution - Bar and pie charts
+
+![Class distribution - bar](../images/CIC_IoT_DIAD_2024_class_distribution_bar.png)
+
+![Class distribution - pie](../images/CIC_IoT_DIAD_2024_class_distribution_pie.png)
+
 ---
 
 ## 5. Feature Analysis and Correlations
 
-⚠️ **Less than 2 numeric features found for correlation analysis**
+⚠️ **Correlation analysis requires loading numeric data into memory**
+
+**Note**: Since all features are stored as strings in SQLite, correlation analysis requires type conversion to numeric format first. This would require loading data into memory.
 
 ### Cardinality Analysis - Categorical Features
-
-**Cardinality Categories:**
-- **High** (>50% unique): 0 features
-- **Medium** (10-50% unique): 17 features
-- **Low** (<10% unique): 67 features
 
 ---
 
 ### Key Findings
 
 1. **Data Quality**: Needs attention - 100.00% completeness, 172,710 missing values, 27,843,090 duplicates
-2. **Data Types**: 1 unique data types - 84 categorical, 0 numeric
+2. **Data Types**: 3 unique data types - 5 categorical, 79 numeric
 3. **Class Distribution**: 1 classes found in 'Label'
 4. **High Cardinality**: 0 features with >90% unique values
-
-### Suggested Next Steps
-
-1. **Data Type Conversion**: Convert numeric features from string to appropriate numeric types
-2. **Feature Engineering**: Remove constant features, consider dimensionality reduction for high-cardinality features
-3. **Data Loading**: Investigate if additional data needs to be loaded
-4. **Temporal Analysis**: Analyze patterns over time using timestamp features
-5. **Preprocessing**: Prepare data for modeling with appropriate encoding strategies
-
----
-
 ## Appendix: Dataset Information
 
 - **Dataset**: CIC_IoT_DIAD_2024
 - **Sample Size**: 55,619,998 records
 - **Total Features**: 84
-- **Database Size**: 53576.82 MB
-- **Analysis Date**: 2026-02-10 08:24:21
-- **Database**: SQLite (`../data/sqlite/data.db`)
-
----
+- **Database Size**: 36565.76 MB
+- **Analysis Date**: 2026-02-17 09:24:13
+- **Database**: SQLite---
 
 *Report generated from dataset_analysis.ipynb notebook*
