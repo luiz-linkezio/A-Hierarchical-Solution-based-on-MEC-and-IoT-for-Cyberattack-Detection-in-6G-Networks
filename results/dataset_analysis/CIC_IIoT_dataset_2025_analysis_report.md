@@ -15,10 +15,6 @@ This report presents a complete exploratory analysis of the CIC_IIoT_dataset_202
 - **Rows**: 685,671
 - **Columns**: 94
 
-### Database Storage Size
-- **Total database size**: 36565.76 MB
-- **Average size per row**: ~55918.91 bytes
-
 ### Data Types
 - **string**: 23 columns
 - **float**: 47 columns

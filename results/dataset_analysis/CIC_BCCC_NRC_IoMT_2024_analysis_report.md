@@ -15,10 +15,6 @@ This report presents a complete exploratory analysis of the CIC_BCCC_NRC_IoMT_20
 - **Rows**: 3,385,313
 - **Columns**: 85
 
-### Database Storage Size
-- **Total database size**: 37727.15 MB
-- **Average size per row**: ~11685.71 bytes
-
 ### Data Types
 - **string**: 5 columns
 - **int**: 35 columns
