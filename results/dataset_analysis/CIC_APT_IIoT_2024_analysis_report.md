@@ -15,10 +15,6 @@ This report presents a complete exploratory analysis of the CIC_APT_IIoT_2024 da
 - **Rows**: 43,198,438
 - **Columns**: 70
 
-### Database Storage Size
-- **Total database size**: 36565.76 MB
-- **Average size per row**: ~887.58 bytes
-
 ### Data Types
 - **float**: 19 columns
 - **int**: 48 columns

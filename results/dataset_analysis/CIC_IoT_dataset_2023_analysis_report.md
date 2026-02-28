@@ -15,10 +15,6 @@ This report presents a complete exploratory analysis of the CIC_IoT_dataset_2023
 - **Rows**: 45,019,243
 - **Columns**: 40
 
-### Database Storage Size
-- **Total database size**: 36565.76 MB
-- **Average size per row**: ~851.68 bytes
-
 ### Data Types
 - **float**: 30 columns
 - **int**: 9 columns
