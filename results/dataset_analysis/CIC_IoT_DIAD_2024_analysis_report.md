@@ -15,10 +15,6 @@ This report presents a complete exploratory analysis of the CIC_IoT_DIAD_2024 da
 - **Rows**: 55,619,998
 - **Columns**: 84
 
-### Database Storage Size
-- **Total database size**: 36565.76 MB
-- **Average size per row**: ~689.36 bytes
-
 ### Data Types
 - **string**: 5 columns
 - **int**: 34 columns
