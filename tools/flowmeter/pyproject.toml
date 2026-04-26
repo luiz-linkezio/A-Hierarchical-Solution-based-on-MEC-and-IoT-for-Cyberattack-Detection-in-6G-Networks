@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowmeter"
+version = "1.0.0"
+description = "High-performance PCAP-to-CSV network flow extractor for edge devices"
+requires-python = ">=3.10"
+dependencies = [
+    "dpkt>=1.9.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flowmeter*"]
+
+[tool.ruff]
+line-length = 100
