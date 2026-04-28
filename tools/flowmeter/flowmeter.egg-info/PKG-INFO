@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: flowmeter
-Version: 1.0.0
-Summary: High-performance PCAP-to-CSV network flow extractor for edge devices
-Requires-Python: >=3.10
-Requires-Dist: dpkt>=1.9.8
-Provides-Extra: dev
-Requires-Dist: pytest; extra == "dev"
-Requires-Dist: ruff; extra == "dev"
