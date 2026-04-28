@@ -1,5 +1,0 @@
-dpkt>=1.9.8
-
-[dev]
-pytest
-ruff
