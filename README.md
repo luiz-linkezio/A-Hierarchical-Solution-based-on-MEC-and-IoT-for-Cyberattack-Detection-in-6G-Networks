@@ -51,6 +51,8 @@ If `tools/cicflowmeter/` is still empty after `git submodule update`, the parent
 
 ### `notebooks/`
 
+See **[`notebooks/README.md`](notebooks/README.md)** for step-by-step usage of the pipeline notebooks.
+
 - **`data_preprocessing.ipynb`** — **PCAP → flow features.** Runs **[CICFlowMeter](https://pypi.org/project/cicflowmeter/)** on folders of capture files and produces merged CSVs (flow-level columns used in many CIC IDS datasets). You set which PCAP directories to process and where CSVs are written; this is the bridge between raw network captures and tabular ML inputs.
 - **`database_creation.ipynb`** — **CSV → SQLite.** Walks `data/raw/` (and nested folders), infers column types from a sample, creates one table per dataset, and loads data in chunks so large files fit in memory. Produces a single DB file (default `data/sqlite/data.db`) shared by analysis and training notebooks.
 - **`dataset_analysis.ipynb`** — **Exploratory data analysis (EDA).** Reads tables from the SQLite database (e.g., CIC APT IIoT 2024, CIC IoT-DIAD 2024, CIC IoT 2023, CIC IIoT 2025, CIC BCCC NRC IoMT 2024). Covers data quality, missing values, distributions, class balance, correlations, and plots; results are saved under `results/`.
