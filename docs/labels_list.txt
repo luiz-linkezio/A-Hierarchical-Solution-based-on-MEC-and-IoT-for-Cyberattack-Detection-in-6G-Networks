@@ -12,3 +12,5 @@ malicious:
 - bruteforce
 - mitm
 - web
+- spoofing
+- recon

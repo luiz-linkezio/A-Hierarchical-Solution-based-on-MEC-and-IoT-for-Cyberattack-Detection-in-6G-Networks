@@ -3,3 +3,4 @@ data
 *.db
 *.log
 CLAUDE.md
+.env
