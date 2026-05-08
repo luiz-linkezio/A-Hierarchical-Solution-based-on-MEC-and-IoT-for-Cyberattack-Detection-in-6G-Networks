@@ -4,37 +4,25 @@ Research code and experiments on **cyber-attack detection** in **IoT** environme
 
 IoT deployments are heterogeneous and resource-limited, while many high-accuracy detectors assume ample compute. **MEC** moves processing closer to the data source than a central cloud, which supports stronger analytics next to the edge while still calling for lightweight logic where devices are weakest. **Hierarchical** designs—lighter processing on devices and heavier analysis on an edge host—are a natural way to balance accuracy, latency, and feasibility.
 
-This repository holds the **data pipeline**, **exploratory analysis**, and **modeling notebooks** used in that line of work (public CIC IoT/IIoT-style datasets, SQLite storage, flow features from PCAPs, and gradient-boosting experiments with interpretability and exploratory clustering tools).
+This repository holds the **data pipeline**, **exploratory analysis**, and **modeling notebooks** used in that line of work (public CIC IoT/IIoT-style datasets, SQLite storage, flow features from PCAPs via **[pcapflower](https://pypi.org/project/pcapflower/)**, and gradient-boosting experiments with interpretability and exploratory clustering tools).
+
+See **[`docs/project_overview.md`](docs/project_overview.md)** for a full description of the architecture, design decisions, and current status.
 
 ---
 
-## Cloning and submodules
+## Architecture
 
-Vendored tools and third-party trees live in **Git submodules** (declared in **`.gitmodules`**). A default clone only downloads the **parent** repository; submodule directories stay **empty** until you initialize them, so scripts and notebooks that expect those paths will fail on a fresh checkout.
+The IDS is divided into three hierarchical phases:
 
-**Recommended (all submodules, present and future)**
+| Phase | Location | Task |
+|-------|----------|------|
+| 1 — Binary classifier | VIM (edge node) | Benign vs. attack — minimizes false negatives |
+| 2 — Multi-classifier | Edge / MEC host | Attack type (DDoS, DoS, malware, brute-force, …) |
+| 3 — Clustering | Edge / MEC host | Unknown / zero-day threats not covered by Phase 2 |
 
-```bash
-git clone --recurse-submodules <repository-url>
-cd IC-temp
-```
+Phase 1 is complete. Phases 2 and 3 are in progress.
 
-**Repository already cloned without submodules**
-
-```bash
-cd IC-temp
-git submodule update --init --recursive
-```
-
-As more submodules are added to this project, the same commands keep pulling everything: `--recurse-submodules` on clone, or `update --init --recursive` afterward. Check **`.gitmodules`** for the authoritative list of paths and remotes.
-
-### `tools/cicflowmeter/`
-
-Hosts **[CICFlowMeter](https://github.com/hieulw/cicflowmeter)** (also on [PyPI](https://pypi.org/project/cicflowmeter/)). Pinning it as a submodule fixes the **flow-extraction** implementation everyone uses, enables **editable installs** from source, and avoids silent drift from the latest PyPI release.
-
-If `tools/cicflowmeter/` is still empty after `git submodule update`, the parent repo may not yet record this path in **`.gitmodules`**—clone [hieulw/cicflowmeter](https://github.com/hieulw/cicflowmeter) into `tools/cicflowmeter/` manually until the submodule is published.
-
-**CLI on your `PATH`:** from `tools/cicflowmeter/`, follow the upstream README (e.g. `pip install -e .`), or install `cicflowmeter` from PyPI if you accept version drift. `data_preprocessing.ipynb` invokes the **`cicflowmeter`** executable.
+---
 
 ---
 
@@ -53,7 +41,7 @@ If `tools/cicflowmeter/` is still empty after `git submodule update`, the parent
 
 See **[`notebooks/README.md`](notebooks/README.md)** for step-by-step usage of the pipeline notebooks.
 
-- **`data_preprocessing.ipynb`** — **PCAP → flow features.** Runs **[CICFlowMeter](https://pypi.org/project/cicflowmeter/)** on folders of capture files and produces merged CSVs (flow-level columns used in many CIC IDS datasets). You set which PCAP directories to process and where CSVs are written; this is the bridge between raw network captures and tabular ML inputs.
+- **`data_preprocessing.ipynb`** — **PCAP → flow features.** Runs **[pcapflower](https://pypi.org/project/pcapflower/)** on folders of capture files and produces merged CSVs (flow-level columns). You set which PCAP directories to process and where CSVs are written; this is the bridge between raw network captures and tabular ML inputs.
 - **`database_creation.ipynb`** — **CSV → SQLite.** Walks `data/raw/` (and nested folders), infers column types from a sample, creates one table per dataset, and loads data in chunks so large files fit in memory. Produces a single DB file (default `data/sqlite/data.db`) shared by analysis and training notebooks.
 - **`dataset_analysis.ipynb`** — **Exploratory data analysis (EDA).** Reads tables from the SQLite database (e.g., CIC APT IIoT 2024, CIC IoT-DIAD 2024, CIC IoT 2023, CIC IIoT 2025, CIC BCCC NRC IoMT 2024). Covers data quality, missing values, distributions, class balance, correlations, and plots; results are saved under `results/`.
 - **`training.ipynb`** — **Supervised and exploratory modeling.** Loads labeled data from SQLite, trains **LightGBM** / **XGBoost**, uses **Optuna** for search, **SHAP** for explanations, and **UMAP** / **HDBSCAN** for structure checks. This is where detection performance and model behavior are studied on the engineered feature tables.
@@ -76,9 +64,9 @@ Expected layout is driven by the notebooks (see `links.txt` and path constants i
 
 Because **`.gitignore`** excludes `data/`, each clone must populate this tree locally after cloning.
 
-### `tools/`
+### `scripts/`
 
-- **`tools/cicflowmeter/`** — CICFlowMeter source (see **[Cloning and submodules](#cloning-and-submodules)**). Additional tooling may appear under `tools/` over time; treat **`.gitmodules`** as the checklist when cloning.
+- **`scripts/network_binary_ids.py`** — Real-time binary IDS for VIM 4 (Phase 1 edge deployment). Captures live traffic via `tcpdump`, converts each rotated PCAP chunk to flows with `pcapflower`, and runs the binary classifier to flag attack traffic.
 
 ---
 
@@ -90,8 +78,11 @@ Because **`.gitignore`** excludes `data/`, each clone must populate this tree lo
    python -m venv venv
    source venv/bin/activate   # Windows: venv\Scripts\activate
    pip install -r requirements.txt
+   pip install pcapflower      # PCAP-to-flow conversion tool
    ```
 
-2. Follow **[Cloning and submodules](#cloning-and-submodules)** so `tools/` (including CICFlowMeter) is populated; install the **`cicflowmeter`** CLI or use `pip install cicflowmeter`. Install any extra libraries for `training.ipynb` as needed.
+   Install extra libraries for `training.ipynb` as needed (`lightgbm`, `optuna`, `shap`, `umap-learn`, `hdbscan`).
 
-3. Download the chosen CIC (or other) datasets, arrange them under `data/raw/` as in the notebooks, then run `database_creation.ipynb` → `dataset_analysis.ipynb` → `training.ipynb` in order as appropriate.
+2. Download the chosen CIC datasets (links in `links.txt`), arrange them under `data/raw/` with one subfolder per traffic class (the folder name becomes the label).
+
+3. Run the notebooks in order: `data_preprocessing.ipynb` → `database_creation.ipynb` → `dataset_analysis.ipynb` → `training.ipynb`.

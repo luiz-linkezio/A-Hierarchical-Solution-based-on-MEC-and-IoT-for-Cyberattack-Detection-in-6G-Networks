@@ -14,10 +14,10 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-The preprocessing notebook also requires **flowmeter**, vendored under `tools/flowmeter/`. Install it once as an editable package:
+The preprocessing notebook also requires **pcapflower**, installable from PyPI:
 
 ```bash
-pip install -e tools/flowmeter/
+pip install pcapflower
 ```
 
 ---
