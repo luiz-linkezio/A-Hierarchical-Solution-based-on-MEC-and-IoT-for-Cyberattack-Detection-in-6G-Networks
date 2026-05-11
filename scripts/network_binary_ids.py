@@ -12,35 +12,41 @@ Model format:        scikit-learn pipeline saved as .pkl (joblib)
 import glob
 import logging
 import os
+import struct
 import subprocess
 import sys
+import threading
 import time
 
 import joblib
 import pandas as pd
+from pcapflower import convert_pcap_to_csv
 
 # Allow importing from the project root (constants package)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from constants import BENIGN_LABELS, FINAL_FEATURES
+from constants.features import ALL_EXCLUDED_FEATURES, EXCLUDED_FEATURES, FINAL_FEATURES
+from constants.labels import ALL_LABELS, BENIGN_LABELS, MALICIOUS_LABELS
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 INTERFACE = "eth0"
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "binary_classifier.pkl")
-PCAPFLOWER_CMD = "pcapflower"
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "binary_classifier.pkl")
 
 # tcpdump rotates to a new file every CHUNK_SIZE_MB megabytes.
 # Smaller chunks → lower detection latency; larger → fewer conversions.
-CHUNK_SIZE_MB = 50
+CHUNK_SIZE_MB = 1
 
 # Base name used by tcpdump: capture.pcap, capture.pcap1, capture.pcap2, ...
 CAPTURE_PREFIX = "capture"
 
 # Minimum probability assigned to the attack class to raise an alert.
-THRESHOLD = 0.8
+# 0.5 matches model.predict() — the current model was trained before the notebook
+# objective/final-model inconsistency was fixed.  After retraining, replace this
+# with the threshold value from study.best_params["threshold"].
+THRESHOLD = 0.5
 
 # Input features expected by the model: everything in the final feature set
 # except the target column.  At runtime this is overridden by the model's own
@@ -57,6 +63,55 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Stats
+# ---------------------------------------------------------------------------
+
+_stats_lock = threading.Lock()
+_stats = {"flows": 0, "alerts": 0}
+
+
+def _count_pcap_packets(pcap_file: str) -> int:
+    """Count packets in a pcap file by walking its binary record headers."""
+    try:
+        with open(pcap_file, "rb") as f:
+            hdr = f.read(24)
+            if len(hdr) < 24:
+                return 0
+            magic = struct.unpack("<I", hdr[:4])[0]
+            if magic == 0xa1b2c3d4:
+                endian = "<"
+            elif magic == 0xd4c3b2a1:
+                endian = ">"
+            else:
+                return 0
+            count = 0
+            while True:
+                rec = f.read(16)
+                if len(rec) < 16:
+                    break
+                caplen = struct.unpack(endian + "I", rec[8:12])[0]
+                if len(f.read(caplen)) < caplen:
+                    break
+                count += 1
+        return count
+    except Exception:
+        return 0
+
+
+def _stats_printer(stop_event: threading.Event) -> None:
+    while not stop_event.wait(3.0):
+        pcaps = sorted(glob.glob(f"{CAPTURE_PREFIX}.pcap*"))
+        pkt_count = _count_pcap_packets(pcaps[-1]) if pcaps else 0
+        with _stats_lock:
+            flows = _stats["flows"]
+            alerts = _stats["alerts"]
+        log.info(
+            "[STATS] Current chunk: %d pkts | Flows processed: %d | Alerts: %d",
+            pkt_count, flows, alerts,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Model loading
@@ -126,6 +181,7 @@ def start_capture() -> subprocess.Popen:
         "-i", INTERFACE,
         "-w", f"{CAPTURE_PREFIX}.pcap",
         "-C", str(CHUNK_SIZE_MB),
+        "-Z", "root",
         "not", "broadcast",
         "and", "not", "multicast",
     ]
@@ -150,13 +206,12 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
     csv_file = pcap_file + ".csv"
 
     # Convert packet capture to flow-level feature vectors
-    result = subprocess.run(
-        [PCAPFLOWER_CMD, pcap_file, "-o", csv_file],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        log.warning("pcapflower exited with code %d for %s", result.returncode, pcap_file)
+    try:
+        convert_pcap_to_csv(pcap_file, csv_file, n_jobs=4)
+    except Exception as e:
+        log.warning("pcapflower failed for %s: %s", pcap_file, e)
+        _cleanup(pcap_file, csv_file)
+        return
 
     if not os.path.exists(csv_file):
         log.warning("pcapflower produced no output for %s", pcap_file)
@@ -168,6 +223,9 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
 
         if df.empty:
             return
+
+        with _stats_lock:
+            _stats["flows"] += len(df)
 
         # Align dataframe to the exact feature set the model expects.
         # Columns present in input_features but missing from the CSV are filled
@@ -186,9 +244,11 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
         probs = model.predict_proba(X)
         attack_probs = probs[:, attack_idx]
 
-        for prob in attack_probs:
+        for i, prob in enumerate(attack_probs):
             if prob >= THRESHOLD:
-                log.warning("[ALERT] Attack detected — confidence %.1f%%", prob * 100)
+                with _stats_lock:
+                    _stats["alerts"] += 1
+                log.warning("[ALERT] Attack detected — confidence %.1f%%\n%s", prob * 100, df.iloc[i].to_string())
 
     except Exception as e:
         log.error("Inference failed on %s: %s", pcap_file, e)
@@ -222,6 +282,10 @@ def main() -> None:
 
     tcpdump_proc = start_capture()
 
+    stop_printer = threading.Event()
+    printer_thread = threading.Thread(target=_stats_printer, args=(stop_printer,), daemon=True)
+    printer_thread.start()
+
     try:
         while True:
             # tcpdump with -C names files: capture.pcap, capture.pcap1, capture.pcap2, ...
@@ -238,8 +302,10 @@ def main() -> None:
 
     except KeyboardInterrupt:
         log.info("Interrupted — shutting down tcpdump.")
+        stop_printer.set()
         tcpdump_proc.terminate()
         tcpdump_proc.wait()
+        printer_thread.join(timeout=3)
 
 
 if __name__ == "__main__":

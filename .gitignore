@@ -4,3 +4,4 @@ data
 *.log
 CLAUDE.md
 .env
+notes.txt

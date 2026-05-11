@@ -2,7 +2,7 @@
 FEATURE REPORT — DATA CLEANING SUMMARY
 ============================================================
 
-Final features used (64):
+Final features used (65):
   + active_max
   + active_mean
   + active_min
@@ -18,7 +18,6 @@ Final features used (64):
   + bwd_pkt_len_max
   + bwd_pkt_len_mean
   + bwd_pkt_len_min
-  + bwd_pkts_b_avg
   + bwd_pkts_s
   + bwd_psh_flags
   + cwr_flag_count
@@ -60,6 +59,8 @@ Final features used (64):
   + rst_flag_cnt
   + src_ip
   + src_port
+  + subflow_bwd_byts
+  + subflow_bwd_pkts
   + subflow_fwd_byts
   + subflow_fwd_pkts
   + syn_flag_cnt
@@ -68,7 +69,7 @@ Final features used (64):
   + totlen_bwd_pkts
   + totlen_fwd_pkts
 
-Excluded features (19):
+Excluded features (18):
 
   [useless_features]
     - timestamp
@@ -76,6 +77,7 @@ Excluded features (19):
   [high_correlation]
     - ack_flag_cnt
     - bwd_pkt_len_std
+    - bwd_pkts_b_avg
     - bwd_seg_size_avg
     - fwd_act_data_pkts
     - fwd_iat_max
@@ -87,8 +89,6 @@ Excluded features (19):
     - idle_mean
     - pkt_size_avg
     - psh_flag_cnt
-    - subflow_bwd_byts
-    - subflow_bwd_pkts
 
   [near_zero_variance]
     - bwd_urg_flags
