@@ -9,10 +9,10 @@ The hierarchy distributes workload by capability:
 | Phase | Where it runs | What it decides |
 |-------|--------------|-----------------|
 | 1 — Binary classifier | VIM (edge node) | Benign vs. attack |
-| 2 — Multi-classifier | Edge / MEC host | Attack type (DDoS, DoS, malware, …) |
-| 3 — Clustering | Edge / MEC host | Unknown / zero-day threats not recognized by Phase 2 |
+| 2 — Multi-classifier | Edge / MEC host | Attack type (known classes + unknown proxy) |
+| 3 — Clustering | Edge / MEC host | Unknown / zero-day threats forwarded from Phase 2 |
 
-Phases 2 and 3 are still in development; Phase 1 is complete and deployed as `scripts/network_binary_ids.py`.
+Phases 1 and 2 are complete. Phase 3 is still in development.
 
 ---
 
@@ -113,17 +113,21 @@ The preprocessing notebook and the live IDS script both invoke `pcapflower` as a
 
 ## Feature Engineering & Selection
 
-Starting from 83 raw flow-level columns produced by pcapflower, the training notebook applies the following cleaning steps:
+Starting from 83 raw flow-level columns produced by pcapflower, the training notebook applies the following cleaning steps (Phase 1 cleaning run, on the binary-sampled dataset):
 
 | Step | Removed features | Rationale |
 |------|-----------------|-----------|
 | Useless features | `timestamp` | Leaks capture order, not generalizable |
-| High correlation (> 0.95) | 15 features | Redundant information; e.g., `ack_flag_cnt`, `pkt_size_avg`, `fwd_seg_size_avg` |
+| High correlation (> 0.95) | 14 features | Redundant information; e.g., `bwd_pkts_b_avg`, `psh_flag_cnt`, `idle_mean` |
 | Near-zero variance (< 1e-4) | `fwd_urg_flags`, `bwd_urg_flags`, `urg_flag_cnt` | Carry almost no signal |
-| Duplicate rows | 25 049 rows removed | Exact duplicates from overlapping dataset captures |
+| Duplicate rows | ~25 000 rows removed | Exact duplicates from overlapping dataset captures |
 | Inf / NaN rows | 0 removed (clean after sampling) | Defensive step |
 
-Final feature count after cleaning: **63 numeric features** (excluding the `label` column). The authoritative list is in `constants/features.py`.
+The authoritative feature list is in `constants/features.py`:
+- **`FINAL_FEATURES`** — 64 entries including `label`, `src_ip`, `dst_ip`; the 61 numeric entries are used directly by Phase 2.
+- **`EXCLUDED_FEATURES`** — grouped by removal reason.
+
+Phase 1 uses a slightly different set (62 numeric features) because it recomputes cleaning on its own sample and the correlation results differ slightly from the constants snapshot. Phase 2 skips recomputation and reads `FINAL_FEATURES` directly for consistency.
 
 ---
 
@@ -134,28 +138,70 @@ Final feature count after cleaning: **63 numeric features** (excluding the `labe
 - **Algorithm**: LightGBM (`LGBMClassifier`)
 - **Sampling**: 400 000 benign rows + 400 000 attack rows (distributed evenly across the 8 attack classes from the SQLite database via `ORDER BY RANDOM() LIMIT n`)
 - **Split**: 80% train / 20% test, stratified
-- **Class weights**: `balanced` (mitigates residual imbalance inside the attack pool)
+- **Class weights**: none (balanced by sampling)
 
 ### Hyperparameter optimization (Optuna)
 
 20 trials with a 1 800 s timeout using 3-fold `StratifiedKFold` cross-validation. **The decision threshold is tuned jointly with the model hyperparameters**, which is a deliberate design choice.
 
-**Objective function: maximize attack recall.**
+**Objective function: maximize F2-score on the attack class.**
 
-The rationale: this is a detection system, not a prevention system (IDS, not IPS). A false negative (missed attack) is more costly than a false positive (benign traffic flagged as attack). Tuning the threshold as part of Optuna means the model can accept lower precision on the attack class in exchange for catching every real attack it can.
+The rationale: this is a detection system, not a prevention system (IDS, not IPS). A false negative (missed attack) is more costly than a false positive (benign traffic flagged as attack). The F2-score weights recall 4× more than precision. Tuning the threshold as part of Optuna means the model can accept lower precision in exchange for catching every real attack it can.
 
 ### Best result
 
 | Metric | Attack class | Benign class |
 |--------|-------------|-------------|
-| Precision | 0.97 | 0.85 |
-| Recall | 0.82 | 0.97 |
-| F1 | 0.89 | 0.91 |
-| Accuracy (overall) | — | **0.90** |
+| Precision | 0.81 | 0.94 |
+| Recall | 0.94 | 0.79 |
+| F1 | 0.87 | 0.86 |
+| Accuracy (overall) | — | **0.87** |
 
-Optimized threshold: `~0.011` (very low — the model flags anything with even a small attack probability).
+Optimized threshold: `~0.19` (flows with attack probability above this are flagged).
 
 Model saved at `models/binary_classifier.pkl` (joblib format).
+
+---
+
+## Phase 2 — Multi-class Classifier
+
+### Problem setup
+
+Receives flows flagged as "attack" by Phase 1 (plus a small benign fallback path for flows Phase 1 misclassified). Classifies each flow into one of the following label categories:
+
+| Label | Description |
+|-------|-------------|
+| `benign` | Fallback — benign flows Phase 1 incorrectly flagged as attack |
+| `ddos` | DDoS attacks |
+| `dos` | DoS attacks |
+| `malware` | Malware traffic |
+| `recon` | Reconnaissance traffic |
+| `unknown` | Proxy for unknown / zero-day attacks (see below) |
+
+### The "unknown" class
+
+Half of the 8 attack classes (4 classes) are relabeled as `unknown` during training. `bruteforce` is always among them (fewest samples — ~16k rows in the database). The full set is `["bruteforce", "mitm", "spoofing", "web"]`.
+
+**Why this works as a novelty proxy:** the model learns to output `unknown` when it encounters traffic patterns from those four families. In production, a truly novel attack whose flow profile resembles any of the four relabeled families will tend to be classified as `unknown` rather than being forced into a wrong known class — making the routing to Phase 3 more reliable.
+
+Controlled by `PHASE2_UNKNOWN_CLASSES` in the Config cell of `training.ipynb`.
+
+### Training setup
+
+- **Algorithm**: LightGBM (`LGBMClassifier`, `objective='multiclass'`)
+- **Feature set**: 61 numeric features from `constants/features.py` (`FINAL_FEATURES` minus `label`, `src_ip`, `dst_ip`)
+- **Sampling**: 50 000 rows per class from SQLite (`ORDER BY RANDOM() LIMIT n`); classes with fewer rows (e.g., `unknown` after merging bruteforce) return what's available
+- **Class weights**: `balanced` — automatically compensates for `unknown` having fewer samples than the 50k-capped classes
+- **Split**: 80% train / 20% test, stratified
+- **Optimization**: Optuna, 20 trials, 1 800 s timeout, 3-fold `StratifiedKFold`, **objective: maximize macro F1**
+
+Macro F1 is used (rather than F2 as in Phase 1) because at this stage all classes should be treated symmetrically — there is no single "most important" class to bias towards.
+
+### Confidence routing to Phase 3
+
+After prediction, `model.predict_proba()` returns a probability vector over all classes. If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.6`), the flow is forwarded to Phase 3 rather than committed to a label. This handles truly novel attacks that don't match any trained pattern well enough to assign confidently.
+
+Model saved at `models/multiclass_classifier.pkl` (joblib format).
 
 ---
 
@@ -165,15 +211,16 @@ Model saved at `models/binary_classifier.pkl` (joblib format).
 
 **How it works:**
 
-1. Launches `tcpdump` in the background on a configurable network interface, rotating capture files every `CHUNK_SIZE_MB` MB.
+1. Launches `tcpdump` in the background on a configurable network interface (`INTERFACE`, default `eth0`), rotating capture files every `CHUNK_SIZE_MB` MB (default 1 MB).
 2. Picks up completed PCAP chunks (all but the file currently being written).
 3. Calls `pcapflower` on each chunk to produce a flow-level CSV.
-4. Aligns the CSV columns to the model's expected feature set (fills missing columns with 0).
+4. Aligns the CSV columns to the model's expected feature set (fills missing columns with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
 5. Runs `model.predict_proba()` on the flows.
-6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (default 0.8).
+6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (default 0.5).
 7. Deletes the PCAP and CSV after processing to avoid disk accumulation.
+8. A background stats thread logs packet count, total flows processed, and alert count every 3 seconds.
 
-The script is self-contained and reads the model path and feature names at startup.
+The script reads `constants/features.py` and `constants/labels.py` at startup to determine input features and benign class labels.
 
 ---
 
@@ -182,17 +229,18 @@ The script is self-contained and reads the model path and feature names at start
 ```
 .
 ├── constants/
-│   ├── features.py        # FINAL_FEATURES and EXCLUDED_FEATURES lists
+│   ├── features.py        # FINAL_FEATURES (64 entries) and EXCLUDED_FEATURES
 │   └── labels.py          # BENIGN_LABELS, MALICIOUS_LABELS
 ├── data/                  # local only — not in Git
 │   ├── raw/               # downloaded PCAPs and generated flow CSVs
-│   └── sqlite/data.db     # unified SQLite database
+│   └── sqlite/data.db     # unified SQLite database (~190 GB)
 ├── docs/
 │   ├── features_report.txt  # last feature cleaning summary from training
 │   ├── labels_list.txt      # human-readable label taxonomy
 │   └── project_overview.md  # this file
 ├── models/
-│   └── binary_classifier.pkl  # Phase 1 LightGBM model (joblib)
+│   ├── binary_classifier.pkl       # Phase 1 LightGBM model (joblib)
+│   └── multiclass_classifier.pkl  # Phase 2 LightGBM model (joblib)
 ├── notebooks/
 │   ├── data_preprocessing.ipynb   # PCAP → labeled CSV
 │   ├── database_creation.ipynb    # CSV → SQLite
@@ -202,7 +250,7 @@ The script is self-contained and reads the model path and feature names at start
 │   ├── dataset_analysis/  # per-dataset Markdown reports
 │   └── images/            # EDA plots
 ├── scripts/
-│   └── network_binary_ids.py  # live binary IDS for VIM 4
+│   └── network_binary_ids.py  # live binary IDS for VIM 4 (Phase 1)
 └── requirements.txt
 ```
 
@@ -213,5 +261,5 @@ The script is self-contained and reads the model path and feature names at start
 | Phase | Status |
 |-------|--------|
 | Phase 1 — Binary classifier | Done. Model trained, script deployed. |
-| Phase 2 — Multi-classifier | In progress (section scaffolded in `training.ipynb`). |
+| Phase 2 — Multi-classifier | Done. Model trained and saved. Real-time script not yet implemented. |
 | Phase 3 — Clustering (UMAP + HDBSCAN) | In progress (section scaffolded in `training.ipynb`). |
