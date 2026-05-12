@@ -189,8 +189,8 @@ Controlled by `PHASE2_UNKNOWN_CLASSES` in the Config cell of `training.ipynb`.
 ### Training setup
 
 - **Algorithm**: LightGBM (`LGBMClassifier`, `objective='multiclass'`)
-- **Feature set**: 61 numeric features from `constants/features.py` (`FINAL_FEATURES` minus `label`, `src_ip`, `dst_ip`)
-- **Sampling**: 50 000 rows per class from SQLite (`ORDER BY RANDOM() LIMIT n`); classes with fewer rows (e.g., `unknown` after merging bruteforce) return what's available
+- **Feature set**: same 62 numeric features as Phase 1 — derived directly from the already-cleaned `df` via `drop(select_dtypes(exclude="number"))`, avoiding a second database query
+- **Sampling**: `df` is subsampled to `PHASE2_SAMPLES_PER_CLASS` (50 000) rows per class using `groupby + sample`; classes with fewer available rows (e.g., `unknown`) return what's available
 - **Class weights**: `balanced` — automatically compensates for `unknown` having fewer samples than the 50k-capped classes
 - **Split**: 80% train / 20% test, stratified
 - **Optimization**: Optuna, 20 trials, 1 800 s timeout, 3-fold `StratifiedKFold`, **objective: maximize macro F1**
