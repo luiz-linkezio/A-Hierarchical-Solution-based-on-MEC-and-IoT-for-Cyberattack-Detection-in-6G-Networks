@@ -12,7 +12,7 @@ The hierarchy distributes workload by capability:
 | 2 — Multi-classifier | Edge / MEC host | Attack type (known classes + unknown proxy) |
 | 3 — Clustering | Edge / MEC host | Unknown / zero-day threats forwarded from Phase 2 |
 
-Phases 1 and 2 are complete. Phase 3 is still in development.
+Phases 1, 2, and 3 are fully implemented in `training.ipynb`.
 
 ---
 
@@ -92,8 +92,9 @@ The notebook walks the PCAP folder tree, calls `pcapflower` on each folder, inje
 **4. Load the CSV into the unified SQLite database (`database_creation.ipynb`).**  
 Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, one SQLite table per top-level dataset directory. Datasets added later are simply appended — the same database accumulates all traffic over time. An index on `label` enables fast class-level queries.
 
-**5. Analyze (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
+**5. Analyse (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
 Both notebooks query the database directly, never touching raw CSVs or PCAPs again.
+`training.ipynb` runs all three phases end-to-end and saves all models to `models/`.
 
 ---
 
@@ -205,6 +206,27 @@ Model saved at `models/multiclass_classifier.pkl` (joblib format).
 
 ---
 
+## Phase 3 — Clustering (UMAP + HDBSCAN)
+
+Receives flows whose Phase 2 maximum predicted probability is below
+`PHASE2_CONFIDENCE_THRESHOLD` (default `0.6`) — i.e., flows that could not be
+confidently assigned to any known attack class.
+
+### Pipeline
+
+1. **UMAP** (`n_components=10`, `n_neighbors=30`, `min_dist=0.0`) compresses the
+   feature space into a dense embedding that preserves local structure. A low
+   `min_dist` produces tighter clusters, which helps HDBSCAN find density peaks.
+2. **HDBSCAN** (`min_cluster_size=100`, `min_samples=50`) identifies clusters of
+   similar flows. Points that do not belong to any cluster receive label `-1`
+   (noise). Each non-noise cluster is a candidate novel attack category.
+3. A 2-D UMAP embedding (separate, for visualisation only) is plotted to give an
+   intuitive view of the cluster structure.
+
+Models are saved at `models/umap_reducer.pkl` and `models/hdbscan_clusterer.pkl`.
+
+---
+
 ## Real-Time IDS Script (VIM 4)
 
 `scripts/network_binary_ids.py` is the edge-deployment component for Phase 1.
@@ -240,7 +262,9 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   └── project_overview.md  # this file
 ├── models/
 │   ├── binary_classifier.pkl       # Phase 1 LightGBM model (joblib)
-│   └── multiclass_classifier.pkl  # Phase 2 LightGBM model (joblib)
+│   ├── multiclass_classifier.pkl  # Phase 2 LightGBM model (joblib)
+│   ├── umap_reducer.pkl           # Phase 3 UMAP reducer (joblib)
+│   └── hdbscan_clusterer.pkl      # Phase 3 HDBSCAN clusterer (joblib)
 ├── notebooks/
 │   ├── data_preprocessing.ipynb   # PCAP → labeled CSV
 │   ├── database_creation.ipynb    # CSV → SQLite
@@ -262,4 +286,4 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 |-------|--------|
 | Phase 1 — Binary classifier | Done. Model trained, script deployed. |
 | Phase 2 — Multi-classifier | Done. Model trained and saved. Real-time script not yet implemented. |
-| Phase 3 — Clustering (UMAP + HDBSCAN) | In progress (section scaffolded in `training.ipynb`). |
+| Phase 3 — Clustering (UMAP + HDBSCAN) | Done. UMAP + HDBSCAN pipeline implemented in `training.ipynb`. Models saved to `models/`. Real-time script not yet implemented. |
