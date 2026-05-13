@@ -14,10 +14,10 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-The preprocessing notebook also requires **pcapflower**, installable from PyPI:
+The preprocessing notebook also requires **netflower**, installable from PyPI:
 
 ```bash
-pip install pcapflower
+pip install netflower
 ```
 
 ---

@@ -33,7 +33,7 @@ optuna==4.8.0
 packaging==26.2
 pandas==3.0.2
 parso==0.8.6
-pcapflower==1.1.0
+netflower==1.1.0
 pexpect==4.9.0
 pillow==12.2.0
 platformdirs==4.9.6

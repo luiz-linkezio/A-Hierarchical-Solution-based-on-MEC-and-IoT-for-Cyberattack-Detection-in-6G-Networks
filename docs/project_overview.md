@@ -61,7 +61,7 @@ Raw PCAPs across all datasets total roughly **1 TB**. Reading that much data as 
 Dataset download
         ↓  manual: rename folders to match project taxonomy
 PCAPs organized in labeled folders (benign/, ddos/, malware/, …)
-        ↓  data_preprocessing.ipynb + pcapflower
+        ↓  data_preprocessing.ipynb + netflower
 Labeled CSVs (one per folder, `label` column = folder name)
         ↓  database_creation.ipynb (chunked streaming insert)
 Unified SQLite database  ←  ~190 GB  (was ~1 TB as PCAPs)
@@ -87,7 +87,7 @@ Dataset authors use their own naming conventions. Before running any notebook, f
 This is the only manual step in the pipeline. The folder name becomes the row-level `label` in the final database, so getting it right here propagates cleanly through the rest.
 
 **3. Convert each folder's PCAPs into a single labeled CSV (`data_preprocessing.ipynb`).**  
-The notebook walks the PCAP folder tree, calls `pcapflower` on each folder, injects the folder name as the `label` column, and writes one `merged_<folder>.csv` per folder.
+The notebook walks the PCAP folder tree, calls `netflower` on each folder, injects the folder name as the `label` column, and writes one `merged_<folder>.csv` per folder.
 
 **4. Load the CSV into the unified SQLite database (`database_creation.ipynb`).**  
 Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, one SQLite table per top-level dataset directory. Datasets added later are simply appended — the same database accumulates all traffic over time. An index on `label` enables fast class-level queries.
@@ -98,23 +98,23 @@ Both notebooks query the database directly, never touching raw CSVs or PCAPs aga
 
 ---
 
-## pcapflower — Custom PCAP-to-Flow Tool
+## netflower — Custom PCAP-to-Flow Tool
 
-The standard tool for PCAP→flow conversion in the IDS research community is **CICFlowMeter** (used in the early stages of this project). It was replaced by **[pcapflower](https://pypi.org/project/pcapflower/)**, a tool we developed and published to PyPI for this project.
+The standard tool for PCAP→flow conversion in the IDS research community is **CICFlowMeter** (used in the early stages of this project). It was replaced by **[netflower](https://pypi.org/project/netflower/)**, a tool we developed and published to PyPI for this project.
 
 Key improvements over CICFlowMeter:
 
 - **Parallelism** — can process multiple PCAP files concurrently; CICFlowMeter is sequential.
 - **Performance** — significantly faster throughput per file.
-- **Pip-installable** — `pip install pcapflower`; no Java dependency.
+- **Pip-installable** — `pip install netflower`; no Java dependency.
 
-The preprocessing notebook and the live IDS script both invoke `pcapflower` as a subprocess.
+The preprocessing notebook and the live IDS script both invoke `netflower` as a subprocess.
 
 ---
 
 ## Feature Engineering & Selection
 
-Starting from 83 raw flow-level columns produced by pcapflower, the training notebook applies the following cleaning steps (Phase 1 cleaning run, on the binary-sampled dataset):
+Starting from 83 raw flow-level columns produced by netflower, the training notebook applies the following cleaning steps (Phase 1 cleaning run, on the binary-sampled dataset):
 
 | Step | Removed features | Rationale |
 |------|-----------------|-----------|
@@ -235,7 +235,7 @@ Models are saved at `models/umap_reducer.pkl` and `models/hdbscan_clusterer.pkl`
 
 1. Launches `tcpdump` in the background on a configurable network interface (`INTERFACE`, default `eth0`), rotating capture files every `CHUNK_SIZE_MB` MB (default 1 MB).
 2. Picks up completed PCAP chunks (all but the file currently being written).
-3. Calls `pcapflower` on each chunk to produce a flow-level CSV.
+3. Calls `netflower` on each chunk to produce a flow-level CSV.
 4. Aligns the CSV columns to the model's expected feature set (fills missing columns with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
 5. Runs `model.predict_proba()` on the flows.
 6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (default 0.5).

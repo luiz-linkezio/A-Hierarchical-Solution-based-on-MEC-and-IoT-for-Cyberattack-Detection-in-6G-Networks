@@ -2,7 +2,7 @@
 network_binary_ids.py — Real-time binary IDS for VIM 4.
 
 Captures live traffic via tcpdump, converts each rotated chunk to
-flow-level features with pcapflower, and runs a pre-trained sklearn
+flow-level features with netflower, and runs a pre-trained sklearn
 binary classifier to flag attack traffic.
 
 Classification mode: binary  (benign vs. attack)
@@ -20,7 +20,7 @@ import time
 
 import joblib
 import pandas as pd
-from pcapflower import convert_pcap_to_csv
+from netflower import convert_pcap_to_csv
 
 # Allow importing from the project root (constants package)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -198,7 +198,7 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
     """
     Convert one .pcap chunk to flows, run binary inference, and log alerts.
 
-    pcapflower is called to produce a flow-level CSV.  The CSV is then aligned
+    netflower is called to produce a flow-level CSV.  The CSV is then aligned
     to the exact feature columns the model expects before calling predict_proba.
     Cleanup (pcap + csv removal) happens in a finally block so files are never
     left behind, even when inference raises an exception.
@@ -209,12 +209,12 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
     try:
         convert_pcap_to_csv(pcap_file, csv_file, n_jobs=4)
     except Exception as e:
-        log.warning("pcapflower failed for %s: %s", pcap_file, e)
+        log.warning("netflower failed for %s: %s", pcap_file, e)
         _cleanup(pcap_file, csv_file)
         return
 
     if not os.path.exists(csv_file):
-        log.warning("pcapflower produced no output for %s", pcap_file)
+        log.warning("netflower produced no output for %s", pcap_file)
         _cleanup(pcap_file, csv_file)
         return
 
@@ -229,7 +229,7 @@ def process_pcap(pcap_file: str, model, input_features: list[str], attack_idx: i
 
         # Align dataframe to the exact feature set the model expects.
         # Columns present in input_features but missing from the CSV are filled
-        # with 0 — this can happen for short or incomplete flows where pcapflower
+        # with 0 — this can happen for short or incomplete flows where netflower
         # omits optional statistics.
         missing_cols = [c for c in input_features if c not in df.columns]
         if missing_cols:
