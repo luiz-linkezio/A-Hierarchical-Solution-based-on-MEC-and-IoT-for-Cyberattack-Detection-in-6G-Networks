@@ -83,8 +83,8 @@ if [[ -z "$IFACE" ]]; then
 fi
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-PCAP_FILE="/tmp/pessoal_${TIMESTAMP}.pcap"
-LOG_FILE="/tmp/pessoal_${TIMESTAMP}.log"
+PCAP_FILE="/home/linkezio/Datasets/benign_traffic/benign/pessoal_${TIMESTAMP}.pcap"
+LOG_FILE="/home/linkezio/Datasets/benign_traffic/benign/pessoal_${TIMESTAMP}.log"
 INICIO=$(date +%s)
 
 # =============================================================================
@@ -114,8 +114,12 @@ cleanup() {
   echo "│  4. Re-treinar o modelo do IDS           │"
   echo "└─────────────────────────────────────────┘"
 
-  kill "$TCPDUMP_PID" 2>/dev/null
-  wait "$TCPDUMP_PID" 2>/dev/null
+  # Encerra o tcpdump de forma limpa
+  # SIGINT faz o tcpdump flushar buffers antes de sair
+  kill -2 "$TCPDUMP_PID"
+
+  # Aguarda encerramento completo
+  wait "$TCPDUMP_PID"
   exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -127,7 +131,7 @@ trap cleanup SIGINT SIGTERM
 #   -n            → não resolve nomes (mais rápido, menos ruído)
 #   -s 0          → captura pacote inteiro (sem truncar)
 #   -q            → saída quieta no terminal
-tcpdump -i "$IFACE" -w "$PCAP_FILE" -n -s 0 -q 2>/dev/null &
+tcpdump -i "$IFACE" -w "$PCAP_FILE" -n -s 0 -q -U 2>/dev/null &
 TCPDUMP_PID=$!
 
 # Registra metadados da sessão no log
