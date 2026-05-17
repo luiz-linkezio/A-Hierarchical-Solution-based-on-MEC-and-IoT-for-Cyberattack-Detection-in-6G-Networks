@@ -9,8 +9,8 @@ The hierarchy distributes workload by capability:
 | Phase | Where it runs | What it decides |
 |-------|--------------|-----------------|
 | 1 — Binary classifier | VIM (edge node) | Benign vs. attack |
-| 2 — Multi-classifier | Edge / MEC host | Attack type (known classes + unknown proxy) |
-| 3 — Clustering | Edge / MEC host | Unknown / zero-day threats forwarded from Phase 2 |
+| 2 — Multi-classifier | Edge / MEC host | Attack type across all known classes |
+| 3 — Clustering | Edge / MEC host | Potential zero-day threats (low-confidence flows from Phase 2) |
 
 Phases 1, 2, and 3 are fully implemented in `training.ipynb`.
 
@@ -94,7 +94,7 @@ Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, on
 
 **5. Analyse (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
 Both notebooks query the database directly, never touching raw CSVs or PCAPs again.
-`training.ipynb` runs all three phases end-to-end and saves all models to `models/`.
+`training.ipynb` runs all three phases end-to-end and saves all models to `models/`. After each run it also writes a timestamped Markdown results document to `docs/results/training_<YYYYMMDD_HHMMSS>.md`, capturing the full training configuration, feature set, Optuna results, classification reports, and model paths for every phase.
 
 ---
 
@@ -119,16 +119,18 @@ Starting from 83 raw flow-level columns produced by netflower, the training note
 | Step | Removed features | Rationale |
 |------|-----------------|-----------|
 | Useless features | `timestamp` | Leaks capture order, not generalizable |
-| High correlation (> 0.95) | 14 features | Redundant information; e.g., `bwd_pkts_b_avg`, `psh_flag_cnt`, `idle_mean` |
+| High correlation (> 0.95) | 11 features | Redundant information; e.g., `psh_flag_cnt`, `idle_mean`, `pkt_size_avg` |
 | Near-zero variance (< 1e-4) | `fwd_urg_flags`, `bwd_urg_flags`, `urg_flag_cnt` | Carry almost no signal |
-| Duplicate rows | ~25 000 rows removed | Exact duplicates from overlapping dataset captures |
+| Duplicate rows | ~22 000 rows removed | Exact duplicates from overlapping dataset captures |
 | Inf / NaN rows | 0 removed (clean after sampling) | Defensive step |
 
 The authoritative feature list is in `constants/features.py`:
-- **`FINAL_FEATURES`** — 64 entries including `label`, `src_ip`, `dst_ip`; the 61 numeric entries are used directly by Phase 2.
+- **`FINAL_FEATURES`** — 68 entries including `label`, `src_ip`, `dst_ip`; the 65 numeric entries are used directly by Phase 2.
 - **`EXCLUDED_FEATURES`** — grouped by removal reason.
 
-Phase 1 uses a slightly different set (62 numeric features) because it recomputes cleaning on its own sample and the correlation results differ slightly from the constants snapshot. Phase 2 skips recomputation and reads `FINAL_FEATURES` directly for consistency.
+`constants/features.py` is kept in sync automatically: the cell in `training.ipynb` that writes `docs/features_report.txt` is immediately followed by a cell that regenerates `constants/features.py` from the same in-memory variables (`final_features`, `removed_features`). Running the training notebook always leaves both files consistent.
+
+Phase 1 uses a slightly different set (65 numeric features) because it recomputes cleaning on its own sample and the correlation results differ slightly from the constants snapshot. Phase 2 skips recomputation and reads `FINAL_FEATURES` directly for consistency.
 
 ---
 
@@ -160,6 +162,8 @@ The rationale: this is a detection system, not a prevention system (IDS, not IPS
 
 Optimized threshold: `~0.19` (flows with attack probability above this are flagged).
 
+After saving the model, the notebook automatically writes the optimized threshold back into `scripts/network_binary_ids.py` by replacing the `THRESHOLD` constant using a regex substitution. This ensures the live IDS script is always in sync with the last trained model, without any manual step.
+
 Model saved at `models/binary_classifier.pkl` (joblib format).
 
 ---
@@ -173,26 +177,23 @@ Receives flows flagged as "attack" by Phase 1 (plus a small benign fallback path
 | Label | Description |
 |-------|-------------|
 | `benign` | Fallback — benign flows Phase 1 incorrectly flagged as attack |
+| `bruteforce` | Brute-force attacks |
 | `ddos` | DDoS attacks |
 | `dos` | DoS attacks |
 | `malware` | Malware traffic |
+| `mitm` | Man-in-the-middle attacks |
 | `recon` | Reconnaissance traffic |
-| `unknown` | Proxy for unknown / zero-day attacks (see below) |
+| `spoofing` | Spoofing attacks |
+| `web` | Web-based attacks |
 
-### The "unknown" class
-
-Half of the 8 attack classes (4 classes) are relabeled as `unknown` during training. `bruteforce` is always among them (fewest samples — ~16k rows in the database). The full set is `["bruteforce", "mitm", "spoofing", "web"]`.
-
-**Why this works as a novelty proxy:** the model learns to output `unknown` when it encounters traffic patterns from those four families. In production, a truly novel attack whose flow profile resembles any of the four relabeled families will tend to be classified as `unknown` rather than being forced into a wrong known class — making the routing to Phase 3 more reliable.
-
-Controlled by `PHASE2_UNKNOWN_CLASSES` in the Config cell of `training.ipynb`.
+The model is trained on all 8 attack classes without relabelling. Low-confidence predictions are forwarded to Phase 3 for unsupervised analysis.
 
 ### Training setup
 
 - **Algorithm**: LightGBM (`LGBMClassifier`, `objective='multiclass'`)
 - **Feature set**: same 62 numeric features as Phase 1 — derived directly from the already-cleaned `df` via `drop(select_dtypes(exclude="number"))`, avoiding a second database query
-- **Sampling**: `df` is subsampled to `PHASE2_SAMPLES_PER_CLASS` (50 000) rows per class using `groupby + sample`; classes with fewer available rows (e.g., `unknown`) return what's available
-- **Class weights**: `balanced` — automatically compensates for `unknown` having fewer samples than the 50k-capped classes
+- **Sampling**: `df` is subsampled to `PHASE2_SAMPLES_PER_CLASS` (50 000) rows per class using `groupby + sample`; classes with fewer available rows (e.g., `bruteforce`) return what's available
+- **Class weights**: `balanced` — automatically compensates for `bruteforce` having fewer samples than the 50k-capped classes
 - **Split**: 80% train / 20% test, stratified
 - **Optimization**: Optuna, 20 trials, 1 800 s timeout, 3-fold `StratifiedKFold`, **objective: maximize macro F1**
 
@@ -238,9 +239,10 @@ Models are saved at `models/umap_reducer.pkl` and `models/hdbscan_clusterer.pkl`
 3. Calls `netflower` on each chunk to produce a flow-level CSV.
 4. Aligns the CSV columns to the model's expected feature set (fills missing columns with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
 5. Runs `model.predict_proba()` on the flows.
-6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (default 0.5).
+6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5).
 7. Deletes the PCAP and CSV after processing to avoid disk accumulation.
 8. A background stats thread logs packet count, total flows processed, and alert count every 3 seconds.
+9. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts).
 
 The script reads `constants/features.py` and `constants/labels.py` at startup to determine input features and benign class labels.
 
@@ -251,7 +253,7 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 ```
 .
 ├── constants/
-│   ├── features.py        # FINAL_FEATURES (64 entries) and EXCLUDED_FEATURES
+│   ├── features.py        # FINAL_FEATURES (68 entries) and EXCLUDED_FEATURES — auto-updated by training.ipynb
 │   └── labels.py          # BENIGN_LABELS, MALICIOUS_LABELS
 ├── data/                  # local only — not in Git
 │   ├── raw/               # downloaded PCAPs and generated flow CSVs
@@ -259,7 +261,9 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 ├── docs/
 │   ├── features_report.txt  # last feature cleaning summary from training
 │   ├── labels_list.txt      # human-readable label taxonomy
-│   └── project_overview.md  # this file
+│   ├── project_overview.md  # this file
+│   └── results/
+│       └── training_<YYYYMMDD_HHMMSS>.md  # per-run results (auto-generated by training.ipynb)
 ├── models/
 │   ├── binary_classifier.pkl       # Phase 1 LightGBM model (joblib)
 │   ├── multiclass_classifier.pkl  # Phase 2 LightGBM model (joblib)
