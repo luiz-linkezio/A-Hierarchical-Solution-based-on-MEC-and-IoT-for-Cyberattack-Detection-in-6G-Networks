@@ -118,10 +118,12 @@ Starting from 83 raw flow-level columns produced by netflower, the training note
 
 | Step | Removed features | Rationale |
 |------|-----------------|-----------|
-| Useless features | `timestamp` | Leaks capture order, not generalizable |
+| Useless / identity features | `timestamp`, `src_ip`, `dst_ip`, `src_port`, `dst_port` | `timestamp` leaks capture order; IP/port columns are flow identifiers, not statistical signals, and cause the model to memorize specific hosts/services rather than learn traffic patterns |
+| Init window sentinel | `init_fwd_win_byts`, `init_bwd_win_byts` | netflower writes `-1` when the TCP handshake window size is unavailable. This `-1` sentinel does not appear in real traffic; the model learns to trigger on it, producing false positives on normal flows where the field is genuinely missing |
+| Bulk rate features | `fwd_byts_b_avg`, `bwd_byts_b_avg`, `fwd_pkts_b_avg`, `bwd_pkts_b_avg`, `fwd_blk_rate_avg`, `bwd_blk_rate_avg` | These are zero for virtually all real-world flows (they require bulk-detection heuristics not applied by netflower in live mode). They are non-zero only in the training datasets, creating a distribution shift between training and deployment |
 | High correlation (> 0.95) | 11 features | Redundant information; e.g., `psh_flag_cnt`, `idle_mean`, `pkt_size_avg` |
 | Near-zero variance (< 1e-4) | `fwd_urg_flags`, `bwd_urg_flags`, `urg_flag_cnt` | Carry almost no signal |
-| Duplicate rows | ~22 000 rows removed | Exact duplicates from overlapping dataset captures |
+| Duplicate rows | eliminated at query time | `SELECT DISTINCT *` is applied directly in the SQLite query, so duplicate rows from overlapping dataset captures never reach pandas. This is more efficient than dropping duplicates in-memory after loading |
 | Inf / NaN rows | 0 removed (clean after sampling) | Defensive step |
 
 The authoritative feature list is in `constants/features.py`:
@@ -147,9 +149,9 @@ Phase 1 uses a slightly different set (65 numeric features) because it recompute
 
 20 trials with a 1 800 s timeout using 3-fold `StratifiedKFold` cross-validation. **The decision threshold is tuned jointly with the model hyperparameters**, which is a deliberate design choice.
 
-**Objective function: maximize F2-score on the attack class.**
+**Objective function: maximize F2-score (beta=2) on the attack class.**
 
-The rationale: this is a detection system, not a prevention system (IDS, not IPS). A false negative (missed attack) is more costly than a false positive (benign traffic flagged as attack). The F2-score weights recall 4× more than precision. Tuning the threshold as part of Optuna means the model can accept lower precision in exchange for catching every real attack it can.
+The rationale: this is a detection system, not a prevention system (IDS, not IPS). A false negative (missed attack) is more costly than a false positive (benign traffic flagged as attack). The F2-score weights recall 4× more than precision, aggressively prioritising attack detection. Tuning the threshold as part of Optuna means the model can accept lower precision in exchange for catching real attacks.
 
 ### Best result
 

@@ -46,7 +46,7 @@ CAPTURE_PREFIX = "capture"
 
 # Minimum probability assigned to the attack class to raise an alert.
 # Optimised by Optuna; auto-updated by notebooks/training.ipynb.
-THRESHOLD = 0.154117966682692
+THRESHOLD = 0.25545480801388215
 
 # Input features expected by the model: everything in the final feature set
 # except the target column.  At runtime this is overridden by the model's own
