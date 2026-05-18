@@ -94,7 +94,7 @@ Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, on
 
 **5. Analyse (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
 Both notebooks query the database directly, never touching raw CSVs or PCAPs again.
-`training.ipynb` runs all three phases end-to-end and saves all models to `models/`. After each run it also writes a timestamped Markdown results document to `docs/results/training_<YYYYMMDD_HHMMSS>.md`, capturing the full training configuration, feature set, Optuna results, classification reports, and model paths for every phase.
+`training.ipynb` runs all three phases end-to-end and saves all models to `models/`. After each run it also writes a timestamped Markdown results document to `docs/results/training_<YYYYMMDD_HHMMSS>.md`, capturing the full training configuration, feature set, Optuna results, classification reports, model paths, and **inline plot images** for every phase. The three plots — Phase 1 feature importance, Phase 2 feature importance, and the Phase 3 UMAP cluster scatter — are saved as PNGs under `docs/results/images/` (named with the same timestamp as the report) and referenced by relative Markdown image links inside the report, so the document is self-contained and renders correctly in any Markdown viewer.
 
 ---
 
@@ -164,9 +164,11 @@ The rationale: this is a detection system, not a prevention system (IDS, not IPS
 
 Optimized threshold: `~0.19` (flows with attack probability above this are flagged).
 
-After saving the model, the notebook automatically writes the optimized threshold back into `scripts/network_binary_ids.py` by replacing the `THRESHOLD` constant using a regex substitution. This ensures the live IDS script is always in sync with the last trained model, without any manual step.
+After saving the model, the notebook automatically updates two constants in `scripts/network_binary_ids.py` via regex substitution: `THRESHOLD` (the decision threshold optimised by Optuna) and `MODEL_PATH` (the path to the newly trained model file). Both constants are rewritten in a single cell, ensuring the live IDS script always points to the exact model produced by the last training run, with no manual step required.
 
-Model saved at `models/binary_classifier.pkl` (joblib format).
+A **feature importance bar chart** (top 20 features by LightGBM `gain`) is displayed immediately after the evaluation cell, using `model.feature_importances_`. This gives a quick visual of which flow statistics drive the binary decision.
+
+Model saved at `models/binary_classifier_<YYYYMMDD_HHMMSS>.pkl` (joblib format). Each run produces a new file so no previous model is overwritten.
 
 ---
 
@@ -193,9 +195,10 @@ The model is trained on all 8 attack classes without relabelling. Low-confidence
 ### Training setup
 
 - **Algorithm**: LightGBM (`LGBMClassifier`, `objective='multiclass'`)
-- **Feature set**: same 62 numeric features as Phase 1 — derived directly from the already-cleaned `df` via `drop(select_dtypes(exclude="number"))`, avoiding a second database query
-- **Sampling**: `df` is subsampled to `PHASE2_SAMPLES_PER_CLASS` (50 000) rows per class using `groupby + sample`; classes with fewer available rows (e.g., `bruteforce`) return what's available
-- **Class weights**: `balanced` — automatically compensates for `bruteforce` having fewer samples than the 50k-capped classes
+- **Feature set**: re-computed independently from a fresh balanced query (see Sampling below). The same cleaning pipeline as Phase 1 is applied to `df2` — correlation and variance filters are recomputed on the balanced distribution rather than on Phase 1's binary sample, which could yield slightly different dropped features.
+- **Sampling**: **fresh `load_dataset_from_db` call** with `samples_per_class=PHASE2_SAMPLES_PER_CLASS` (50 000), no `binary_sampling`. Each class gets up to 50 000 rows drawn directly from the DB. Classes with fewer rows (e.g., `bruteforce` with ~16 k in the DB) return all they have. This replaces the previous approach of subsampling Phase 1's `df` (which was binary-sampled and therefore had a biased benign-vs-attack distribution).
+- **Why a fresh query**: reusing `df` meant Phase 2 saw a distribution skewed by Phase 1's `BINARY_SAMPLING=(604k, 604k)` — benign was overrepresented relative to individual attack classes. A fresh per-class query gives each attack type equal sampling priority from the start.
+- **Class weights**: `balanced` — automatically compensates for `bruteforce` having fewer available rows than the 50 k-capped classes.
 - **Split**: 80% train / 20% test, stratified
 - **Optimization**: Optuna, 20 trials, 1 800 s timeout, 3-fold `StratifiedKFold`, **objective: maximize macro F1**
 
@@ -205,7 +208,9 @@ Macro F1 is used (rather than F2 as in Phase 1) because at this stage all classe
 
 After prediction, `model.predict_proba()` returns a probability vector over all classes. If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.6`), the flow is forwarded to Phase 3 rather than committed to a label. This handles truly novel attacks that don't match any trained pattern well enough to assign confidently.
 
-Model saved at `models/multiclass_classifier.pkl` (joblib format).
+A **feature importance bar chart** (top 20 features by LightGBM `gain`) is displayed after the evaluation cell, using `model_p2.feature_importances_`. Phase 3 (UMAP + HDBSCAN) does not have a feature importance chart because it is unsupervised and there is no direct notion of feature contribution to cluster membership.
+
+Model saved at `models/multiclass_classifier_<YYYYMMDD_HHMMSS>.pkl` (joblib format). Each run produces a new file so no previous model is overwritten.
 
 ---
 
@@ -226,7 +231,7 @@ confidently assigned to any known attack class.
 3. A 2-D UMAP embedding (separate, for visualisation only) is plotted to give an
    intuitive view of the cluster structure.
 
-Models are saved at `models/umap_reducer.pkl` and `models/hdbscan_clusterer.pkl`.
+Models are saved at `models/umap_reducer_<YYYYMMDD_HHMMSS>.pkl` and `models/hdbscan_clusterer_<YYYYMMDD_HHMMSS>.pkl`. Each run produces new files so no previous models are overwritten.
 
 ---
 
@@ -265,12 +270,16 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   ├── labels_list.txt      # human-readable label taxonomy
 │   ├── project_overview.md  # this file
 │   └── results/
-│       └── training_<YYYYMMDD_HHMMSS>.md  # per-run results (auto-generated by training.ipynb)
+│       ├── training_<YYYYMMDD_HHMMSS>.md  # per-run results (auto-generated by training.ipynb)
+│       └── images/
+│           ├── <ts>_p1_feature_importance.png   # Phase 1 top-20 feature importance bar chart
+│           ├── <ts>_p2_feature_importance.png   # Phase 2 top-20 feature importance bar chart
+│           └── <ts>_p3_umap_clusters.png        # Phase 3 UMAP + HDBSCAN cluster scatter plot
 ├── models/
-│   ├── binary_classifier.pkl       # Phase 1 LightGBM model (joblib)
-│   ├── multiclass_classifier.pkl  # Phase 2 LightGBM model (joblib)
-│   ├── umap_reducer.pkl           # Phase 3 UMAP reducer (joblib)
-│   └── hdbscan_clusterer.pkl      # Phase 3 HDBSCAN clusterer (joblib)
+│   ├── binary_classifier_<ts>.pkl       # Phase 1 LightGBM model (joblib) — one file per training run
+│   ├── multiclass_classifier_<ts>.pkl  # Phase 2 LightGBM model (joblib) — one file per training run
+│   ├── umap_reducer_<ts>.pkl           # Phase 3 UMAP reducer (joblib) — one file per training run
+│   └── hdbscan_clusterer_<ts>.pkl      # Phase 3 HDBSCAN clusterer (joblib) — one file per training run
 ├── notebooks/
 │   ├── data_preprocessing.ipynb   # PCAP → labeled CSV
 │   ├── database_creation.ipynb    # CSV → SQLite
