@@ -94,6 +94,8 @@ Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, on
 
 **5. Analyse (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
 Both notebooks query the database directly, never touching raw CSVs or PCAPs again.
+`training.ipynb` is organised into sections: **Imports**, **Configuration** (a single section combining data-source inputs — `DB_PATH`, `TABLE`, sampling params — and algorithm constants such as thresholds and fixed LightGBM params), followed by the three training phases. Keeping inputs and constants in one place makes it faster to adjust a run without scrolling between sections.
+
 `training.ipynb` runs all three phases end-to-end and saves all models to `models/`. After each run it also writes a timestamped Markdown results document to `docs/results/training_<YYYYMMDD_HHMMSS>.md`, capturing the full training configuration, feature set, Optuna results, classification reports, model paths, and **inline plot images** for every phase. The three plots — Phase 1 feature importance, Phase 2 feature importance, and the Phase 3 UMAP cluster scatter — are saved as PNGs under `docs/results/images/` (named with the same timestamp as the report) and referenced by relative Markdown image links inside the report, so the document is self-contained and renders correctly in any Markdown viewer.
 
 ---
@@ -141,7 +143,7 @@ Phase 1 uses a slightly different set (65 numeric features) because it recompute
 ### Training setup
 
 - **Algorithm**: LightGBM (`LGBMClassifier`)
-- **Sampling**: 400 000 benign rows + 400 000 attack rows (distributed evenly across the 8 attack classes from the SQLite database via `ORDER BY RANDOM() LIMIT n`)
+- **Sampling**: `BINARY_SAMPLING = (615 317, 615 317)` — 615 317 benign rows + 615 317 attack rows (distributed evenly across the 8 attack classes from the SQLite database via `ORDER BY RANDOM() LIMIT n`). The cap is set to `SAMPLES_PER_CLASS` (also 615 317), meaning the notebook pulls as many rows as it can up to that limit per class.
 - **Split**: 80% train / 20% test, stratified
 - **Class weights**: none (balanced by sampling)
 
@@ -153,16 +155,23 @@ Phase 1 uses a slightly different set (65 numeric features) because it recompute
 
 The rationale: this is a detection system, not a prevention system (IDS, not IPS). A false negative (missed attack) is more costly than a false positive (benign traffic flagged as attack). The F2-score weights recall 4× more than precision, aggressively prioritising attack detection. Tuning the threshold as part of Optuna means the model can accept lower precision in exchange for catching real attacks.
 
-### Best result
+### Best result (training run 2026-05-18 13:00:14)
 
 | Metric | Attack class | Benign class |
 |--------|-------------|-------------|
-| Precision | 0.81 | 0.94 |
-| Recall | 0.94 | 0.79 |
-| F1 | 0.87 | 0.86 |
-| Accuracy (overall) | — | **0.87** |
+| Precision | 0.73 | 0.95 |
+| Recall | 0.94 | 0.76 |
+| F1 | 0.82 | 0.85 |
+| Accuracy (overall) | — | **0.84** |
 
-Optimized threshold: `~0.19` (flows with attack probability above this are flagged).
+| Class | Recall |
+|-------|--------|
+| Attack | 0.9386 |
+| Benign | 0.7647 |
+
+Best F2-score (Optuna): `0.8840`. Optimized threshold: `0.19976531434163686` (flows with attack probability above this are flagged).
+
+The lower attack precision (0.73) is intentional: the F2 objective aggressively favours recall, accepting more false positives in exchange for catching 94% of real attacks. In practice this means roughly 1 in 4 flows classified as attack will be benign — expected and acceptable for an IDS (vs. IPS) deployment.
 
 After saving the model, the notebook automatically updates two constants in `scripts/network_binary_ids.py` via regex substitution: `THRESHOLD` (the decision threshold optimised by Optuna) and `MODEL_PATH` (the path to the newly trained model file). Both constants are rewritten in a single cell, ensuring the live IDS script always points to the exact model produced by the last training run, with no manual step required.
 
@@ -196,7 +205,7 @@ The model is trained on all 8 attack classes without relabelling. Low-confidence
 
 - **Algorithm**: LightGBM (`LGBMClassifier`, `objective='multiclass'`)
 - **Feature set**: re-computed independently from a fresh balanced query (see Sampling below). The same cleaning pipeline as Phase 1 is applied to `df2` — correlation and variance filters are recomputed on the balanced distribution rather than on Phase 1's binary sample, which could yield slightly different dropped features.
-- **Sampling**: **fresh `load_dataset_from_db` call** with `samples_per_class=PHASE2_SAMPLES_PER_CLASS` (50 000), no `binary_sampling`. Each class gets up to 50 000 rows drawn directly from the DB. Classes with fewer rows (e.g., `bruteforce` with ~16 k in the DB) return all they have. This replaces the previous approach of subsampling Phase 1's `df` (which was binary-sampled and therefore had a biased benign-vs-attack distribution).
+- **Sampling**: **fresh `load_dataset_from_db` call** with `samples_per_class=PHASE2_SAMPLES_PER_CLASS` (615 317), no `binary_sampling`. Each class gets up to 615 317 rows drawn directly from the DB. Classes with fewer rows (e.g., `bruteforce` with ~16 k in the DB) return all they have. This replaces the previous approach of subsampling Phase 1's `df` (which was binary-sampled and therefore had a biased benign-vs-attack distribution).
 - **Why a fresh query**: reusing `df` meant Phase 2 saw a distribution skewed by Phase 1's `BINARY_SAMPLING=(604k, 604k)` — benign was overrepresented relative to individual attack classes. A fresh per-class query gives each attack type equal sampling priority from the start.
 - **Class weights**: `balanced` — automatically compensates for `bruteforce` having fewer available rows than the 50 k-capped classes.
 - **Split**: 80% train / 20% test, stratified
@@ -206,7 +215,7 @@ Macro F1 is used (rather than F2 as in Phase 1) because at this stage all classe
 
 ### Confidence routing to Phase 3
 
-After prediction, `model.predict_proba()` returns a probability vector over all classes. If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.6`), the flow is forwarded to Phase 3 rather than committed to a label. This handles truly novel attacks that don't match any trained pattern well enough to assign confidently.
+After prediction, `model.predict_proba()` returns a probability vector over all classes. If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.4`), the flow is forwarded to Phase 3 rather than committed to a label. This handles truly novel attacks that don't match any trained pattern well enough to assign confidently. The threshold was lowered from 0.6 to 0.4 to reduce the Phase 3 input volume and route only genuinely ambiguous flows — with 0.6, roughly 30% of flows were forwarded, which is too many for the clustering stage to be meaningful.
 
 A **feature importance bar chart** (top 20 features by LightGBM `gain`) is displayed after the evaluation cell, using `model_p2.feature_importances_`. Phase 3 (UMAP + HDBSCAN) does not have a feature importance chart because it is unsupervised and there is no direct notion of feature contribution to cluster membership.
 
@@ -241,15 +250,12 @@ Models are saved at `models/umap_reducer_<YYYYMMDD_HHMMSS>.pkl` and `models/hdbs
 
 **How it works:**
 
-1. Launches `tcpdump` in the background on a configurable network interface (`INTERFACE`, default `eth0`), rotating capture files every `CHUNK_SIZE_MB` MB (default 1 MB).
-2. Picks up completed PCAP chunks (all but the file currently being written).
-3. Calls `netflower` on each chunk to produce a flow-level CSV.
-4. Aligns the CSV columns to the model's expected feature set (fills missing columns with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
-5. Runs `model.predict_proba()` on the flows.
-6. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5).
-7. Deletes the PCAP and CSV after processing to avoid disk accumulation.
-8. A background stats thread logs packet count, total flows processed, and alert count every 3 seconds.
-9. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts).
+1. Calls `netflower.capture_live()` directly on the network interface (`INTERFACE`, default `eth0`), registering an `on_flow` callback. Each flow is emitted by netflower the moment it completes — either on TCP FIN/RST or after `IDLE_TIMEOUT` seconds of inactivity (default 30 s), up to a maximum of `FLOW_TIMEOUT` seconds (default 120 s). This eliminates the previous chunk-based architecture (tcpdump + PCAP rotation) and its associated latency: flows are classified as soon as they close, not after accumulating 1 MB of traffic.
+2. For each completed flow, the callback aligns the flow dict to the model's expected feature set (fills missing keys with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
+3. Runs `model.predict_proba()` on the single-row DataFrame.
+4. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5).
+5. A background stats thread logs total flows processed and alert count every 3 seconds.
+6. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts).
 
 The script reads `constants/features.py` and `constants/labels.py` at startup to determine input features and benign class labels.
 
@@ -292,6 +298,29 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   └── network_binary_ids.py  # live binary IDS for VIM 4 (Phase 1)
 └── requirements.txt
 ```
+
+---
+
+## Real-World Deployment Observations
+
+`scripts/network_binary_ids.py` was deployed live on the VIM 4 (`eth0`, IP `192.168.100.5`) on 2026-05-18. The session revealed several patterns worth documenting.
+
+### Distribution shift on benign traffic
+
+All real flows in the session were flagged as attacks, including SSH handshakes and a plain HTTP request to an external server. This is a known consequence of how the training datasets were captured: the "benign" class in the CIC datasets consists of scripted background traffic with regular inter-packet timing, which differs from actual interactive traffic in two key ways:
+
+- **`flow_iat_min`** (second-most important feature): real TCP bursts produce inter-arrival times in the 1–10 µs range; training benign flows are in the ms range. Any burst on the real network is therefore anomalous to the model.
+- **`flow_byts_s`** (most important feature): short flows (< 1 s) over a fast LAN produce apparent throughput far above what the training distribution saw for benign traffic.
+
+Short-lived TCP flows — SSH handshakes, HTTP requests — are the most affected. Long, sustained downloads (30+ s, stable throughput) are expected to score below the threshold because their temporal features resemble the training distribution more closely.
+
+### Single-packet FIN/ACK artifact
+
+Every TCP connection close produced a second "flow" with `flow_duration = 0`, `tot_fwd_pkts = 1`, `totlen_fwd_pkts = 52` bytes, only FIN + ACK flags, and consistently 84% attack confidence. This is a netflower artifact: when the final FIN/ACK arrives after the main flow is already emitted, netflower creates a second micro-flow for it. The model has never seen this pattern as benign (it does not exist in the training captures), so it always scores it as an attack. This is a false positive by design and should be filtered out in post-processing or suppressed via a minimum packet-count guard in the IDS script.
+
+### Nmap recon attempt
+
+A port scan with `nmap -sS 192.168.100.5` was initiated from `192.168.100.232` to verify that the IDS correctly detects reconnaissance traffic. Nmap SYN scans produce flows with characteristics that strongly match the `recon` class in the training data: high `flow_pkts_s`, very short `flow_duration`, near-zero `bwd_pkts_s` (most probes receive no response or a RST), and `syn_flag_cnt > 0` with no matching ACK completion. The IDS is expected to fire multiple alerts in rapid succession during the scan. Results of this test are pending.
 
 ---
 
