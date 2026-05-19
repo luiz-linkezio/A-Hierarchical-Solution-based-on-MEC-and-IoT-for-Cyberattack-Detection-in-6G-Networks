@@ -295,7 +295,10 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   ├── dataset_analysis/  # per-dataset Markdown reports
 │   └── images/            # EDA plots
 ├── scripts/
-│   └── network_binary_ids.py  # live binary IDS for VIM 4 (Phase 1)
+│   ├── network_binary_ids.py     # live binary IDS for VIM 4 (Phase 1)
+│   ├── attack_orchestrator.py    # orchestrates attacks + quantifies flows for IDS validation
+│   ├── benign_trafic_simulator.sh  # captures real personal traffic as benign pcap
+│   └── trafic_capturer.sh          # generic tcpdump capture helper
 └── requirements.txt
 ```
 
@@ -321,6 +324,75 @@ Every TCP connection close produced a second "flow" with `flow_duration = 0`, `t
 ### Nmap recon attempt
 
 A port scan with `nmap -sS 192.168.100.5` was initiated from `192.168.100.232` to verify that the IDS correctly detects reconnaissance traffic. Nmap SYN scans produce flows with characteristics that strongly match the `recon` class in the training data: high `flow_pkts_s`, very short `flow_duration`, near-zero `bwd_pkts_s` (most probes receive no response or a RST), and `syn_flag_cnt > 0` with no matching ACK completion. The IDS is expected to fire multiple alerts in rapid succession during the scan. Results of this test are pending.
+
+---
+
+## Attack Orchestrator (`scripts/attack_orchestrator.py`)
+
+`scripts/attack_orchestrator.py` is a Python script that runs multiple attack types against VIM 4 in sequence, captures each attack's traffic with `tcpdump`, and quantifies the generated flows using `tshark` + `capinfos`. It is designed to produce labeled, measurable traffic for IDS validation and dataset augmentation.
+
+### Why a dedicated orchestrator?
+
+Running attacks manually one at a time makes it difficult to correlate traffic to attack types after the fact — the timing boundaries between attacks are not recorded, and there is no structured output to annotate which pcap windows correspond to which label. The orchestrator solves this by:
+
+1. Assigning each attack type its own timestamped `.pcap` file, so flow extraction and labeling can be done per attack with no ambiguity.
+2. Automatically analyzing each pcap after the attack completes, producing concrete counts (TCP flows, UDP flows, ICMP flows, forward/backward packet split, total bytes) that tell you exactly how many flows each attack generated.
+3. Outputting a timestamped `report_<ts>.json` + `report_<ts>.csv` under `/home/linkezio/Datasets/attack_testing/` that can be directly used to decide how much traffic to extract and how to balance a new dataset.
+
+### Covered attack types
+
+| Name | Label | Tools | Time-bounded |
+|------|-------|-------|-------------|
+| `recon` | Recon | nmap, masscan | No (runs to completion) |
+| `dos` | DoS | hping3 | Yes (`--duration`) |
+| `ddos` | DDoS | hping3 `--rand-source` | Yes |
+| `bruteforce` | Brute Force | medusa (SSH, HTTP, Telnet) | Yes |
+| `web` | Web Attacks | nikto, gobuster, curl flood | Yes |
+| `mitm` | MITM | arpspoof | Yes |
+| `spoofing` | Spoofing | hping3 `-a` (fixed spoofed src) | No (packet count limited) |
+| `malware` | Malware (C2/Mirai) | nmap, nc (beacon simulation) | No |
+
+### Fallback behavior
+
+The script does not require wordlists to be installed. When `/usr/share/wordlists/rockyou.txt` or the dirbuster wordlists are absent, it writes a minimal 17-entry password list and 18-entry path list to a temporary file, uses them, and deletes them afterward. This means brute-force and web attacks always run, but with negligible coverage — useful for flow generation even without the full wordlists.
+
+### Per-attack metrics (captured in report)
+
+| Field | Source |
+|-------|--------|
+| `total_packets` | `capinfos -c` |
+| `total_bytes` | `capinfos -s` |
+| `capture_duration` | `capinfos -u` |
+| `tcp_flows` | `tshark -z conv,tcp` (unique `<->` pairs) |
+| `udp_flows` | `tshark -z conv,udp` |
+| `icmp_flows` | `tshark -z conv,icmp` |
+| `total_flows` | sum of above |
+| `fwd_packets` | `tshark -Y "ip.dst == <target>"` frame count |
+| `bwd_packets` | `total_packets - fwd_packets` |
+
+### Usage
+
+```bash
+# All attacks, default 30s time-bound, default target 192.168.100.5
+sudo python3 scripts/attack_orchestrator.py
+
+# Only recon + dos + spoofing, 60s time-bound
+sudo python3 scripts/attack_orchestrator.py --attacks recon,dos,spoofing --duration 60
+
+# Different target / interface
+sudo python3 scripts/attack_orchestrator.py --target 192.168.100.10 --iface ens3
+
+# Dry run — print commands without executing
+python3 scripts/attack_orchestrator.py --dry-run
+
+# Custom wordlist (faster brute-force with real wordlist)
+sudo python3 scripts/attack_orchestrator.py --wordlist /usr/share/wordlists/rockyou.txt
+```
+
+Output files land in `/home/linkezio/Datasets/attack_testing/`:
+- `<attack>_<timestamp>.pcap` — raw traffic capture per attack type
+- `report_<timestamp>.json` — structured metrics per attack (full)
+- `report_<timestamp>.csv` — same data in flat CSV (ready to import into pandas)
 
 ---
 
