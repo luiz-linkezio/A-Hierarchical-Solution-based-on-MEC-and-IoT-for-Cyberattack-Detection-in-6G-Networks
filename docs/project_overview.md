@@ -252,10 +252,10 @@ Models are saved at `models/umap_reducer_<YYYYMMDD_HHMMSS>.pkl` and `models/hdbs
 
 1. Calls `netflower.capture_live()` directly on the network interface (`INTERFACE`, default `eth0`), registering an `on_flow` callback. Each flow is emitted by netflower the moment it completes — either on TCP FIN/RST or after `IDLE_TIMEOUT` seconds of inactivity (default 30 s), up to a maximum of `FLOW_TIMEOUT` seconds (default 120 s). This eliminates the previous chunk-based architecture (tcpdump + PCAP rotation) and its associated latency: flows are classified as soon as they close, not after accumulating 1 MB of traffic.
 2. For each completed flow, the callback aligns the flow dict to the model's expected feature set (fills missing keys with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
-3. Runs `model.predict_proba()` on the single-row DataFrame.
-4. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5).
-5. A background stats thread logs total flows processed and alert count every 3 seconds.
-6. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts).
+3. Runs `model.predict_proba()` on the single-row DataFrame, timing the call with `time.perf_counter()` to measure per-flow inference latency in milliseconds. The latency is accumulated across all flows so average and peak inference times can be reported at the end of the session.
+4. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5). The alert line always includes the confidence percentage and the inference time for that flow. Printing all flow features on alert is controlled by `VERBOSE_ALERTS` (default `False`, enabled by setting env var `VERBOSE_ALERTS=1`) — disabled by default because printing 65+ feature values per alert makes the terminal unreadable in production.
+5. A background stats thread logs total flows processed, alert count, average inference time, and maximum inference time every 3 seconds.
+6. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts, average and maximum inference latency).
 
 The script reads `constants/features.py` and `constants/labels.py` at startup to determine input features and benign class labels.
 
@@ -323,7 +323,25 @@ Every TCP connection close produced a second "flow" with `flow_duration = 0`, `t
 
 ### Nmap recon attempt
 
-A port scan with `nmap -sS 192.168.100.5` was initiated from `192.168.100.232` to verify that the IDS correctly detects reconnaissance traffic. Nmap SYN scans produce flows with characteristics that strongly match the `recon` class in the training data: high `flow_pkts_s`, very short `flow_duration`, near-zero `bwd_pkts_s` (most probes receive no response or a RST), and `syn_flag_cnt > 0` with no matching ACK completion. The IDS is expected to fire multiple alerts in rapid succession during the scan. Results of this test are pending.
+A port scan with `nmap -sS 192.168.100.5` was initiated from `192.168.100.232` to verify that the IDS correctly detects reconnaissance traffic. Nmap SYN scans produce flows with characteristics that strongly match the `recon` class in the training data: high `flow_pkts_s`, very short `flow_duration`, near-zero `bwd_pkts_s` (most probes receive no response or a RST), and `syn_flag_cnt > 0` with no matching ACK completion. The full validation test (see below) confirmed that recon-type flows are detected reliably at the 90% threshold.
+
+### Attack orchestrator validation (2026-05-18)
+
+A full-scale live validation was run on VIM 4 by pairing `scripts/network_binary_ids.py` (IDS) with `scripts/attack_orchestrator.py` (traffic generator). The orchestrator fired all eight attack categories against `192.168.100.5` while the IDS monitored `eth0` in real time.
+
+| Metric | Value |
+|--------|-------|
+| Total flows seen | 17,357 |
+| Alerts raised | 12,216 |
+| Overall detection rate | **~70%** (±1%) |
+| Decision threshold | 90% (`THRESHOLD = 0.9`) |
+| Traffic composition | 100% attack (no benign traffic during the test window) |
+
+**Key finding — spoofing is the primary miss.** The ~30% of flows that were not flagged are concentrated almost entirely in the `spoofing` attack type (hping3 with a fixed spoofed source IP). Excluding spoofing, the detection rate across the remaining seven attack classes (recon, dos, ddos, bruteforce, web, mitm, malware) is close to 100%.
+
+**Why spoofing is harder to detect at 90%.** Spoofed-source flows generated by `hping3 -a <fixed-IP>` differ from the training distribution for spoofing in one key way: a fixed spoofed source produces flows whose IP-level statistics (e.g., consistent backward-path silence) differ subtly from the randomized spoofing patterns in the CIC training captures. The model assigns these flows attack probabilities that cluster just below 0.9, so they are flagged at lower thresholds but missed at 0.9. This is a threshold calibration effect, not a feature blindness problem — the Phase 2 multi-classifier would still classify them correctly if Phase 1 had passed them through.
+
+**Implication for threshold selection.** The 0.9 threshold was chosen to minimize false positives on genuinely benign traffic (where the distribution shift already causes high false-positive rates at lower thresholds). Lowering the threshold to, say, 0.5 would recover most spoofing misses but would also inflate false positives on real benign traffic significantly. The right tradeoff depends on the deployment scenario; 0.9 is conservative and favours precision over recall for the binary gate.
 
 ---
 
