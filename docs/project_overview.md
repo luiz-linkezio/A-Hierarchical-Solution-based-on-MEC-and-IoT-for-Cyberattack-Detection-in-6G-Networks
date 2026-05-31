@@ -258,8 +258,8 @@ This is the minimal deployment intended for resource-constrained edge nodes (VIM
 2. Calls `netflower.capture_live()` on the network interface (`INTERFACE`, default `eth0`), registering an `on_flow` callback. Each flow is emitted by netflower the moment it completes — either on TCP FIN/RST or after `IDLE_TIMEOUT` seconds of inactivity (default 30 s), up to a maximum of `FLOW_TIMEOUT` seconds (default 120 s).
 3. **Phase 1** — For each completed flow, aligns the flow dict to the model's expected feature set (fills missing keys with 0) and runs `model.predict_proba()`. Flows below `THRESHOLD` are discarded as benign.
 4. Logs an `[ALERT]` for every flagged flow with Phase 1 confidence and inference latency. `VERBOSE_ALERTS=1` prints all flow features.
-5. A background stats thread logs every 3 seconds: total flows, alerts, avg/max inference latency.
-6. Creates a timestamped log in `docs/results/binary_ids_run_<YYYYMMDD_HHMMSS>.log` at startup; appends a runtime summary at shutdown.
+5. A background stats thread logs every 3 seconds: total flows, alerts, avg/max Phase 1 inference latency, avg/max E2E decision latency, and a `[SYS]` line with CPU %, RAM (% and MB), network throughput (↓ recv KB/s / ↑ sent KB/s on the capture interface), and power consumption in watts (via Intel RAPL; omitted when unavailable on non-Intel or non-root runs).
+6. Creates a timestamped log in `logs/binary_ids_run_<YYYYMMDD_HHMMSS>.log` at startup; appends a `[SUMMARY]` block (flows, alerts, inference and E2E latency averages/peaks) and a `[SYSTEM_METRICS]` block (avg/max CPU, avg/max RAM, avg network throughput, avg/max power) at shutdown.
 
 **Why a Phase-1-only variant exists:** The two-phase script (`network_ids.py`) loads two models and runs two inference passes per flagged flow. For edge nodes where memory or latency is constrained, this is unnecessary when the only required output is a binary benign/attack decision. `network_binary_ids.py` is also easier to validate in isolation before deploying the full pipeline.
 
@@ -278,8 +278,8 @@ This script runs both phases in sequence for every flagged flow.
 3. **Phase 1** — Binary gate: benign vs. attack. Flows below `THRESHOLD` are discarded.
 4. **Phase 2** — Flows that pass Phase 1 are classified into a specific attack type (ddos, dos, malware, bruteforce, mitm, web, recon, spoofing, or benign as fallback). If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.4`), the flow is tagged `LOW_CONF→P3` — a routing marker for Phase 3 once implemented.
 5. Logs `[ALERT]` with Phase 1 confidence, Phase 2 label and confidence, and per-phase latency.
-6. Background stats thread logs per-phase avg/max inference and low-confidence count every 3 seconds.
-7. Creates a timestamped log in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.log`; appends a Phase 2 attack-type breakdown at shutdown.
+6. Background stats thread logs per-phase avg/max inference latency, E2E decision latency, low-confidence count, and a `[SYS]` line with CPU %, RAM, network throughput, and RAPL power — every 3 seconds.
+7. Creates a timestamped log in `logs/ids_run_<YYYYMMDD_HHMMSS>.log`; appends a `[SUMMARY]` block (per-phase and E2E latencies), a `[SYSTEM_METRICS]` block (avg/max CPU, RAM, network throughput, avg/max power), and a `[P2_BREAKDOWN]` table (alert count per attack type) at shutdown.
 
 **Note on auto-update by `training.ipynb`:** The notebook currently updates `MODEL_PATH` and `THRESHOLD` via regex after Phase 1 training. The same substitution should be extended to rewrite `P2_MODEL_PATH` after Phase 2 training so the script always points to the latest model without a manual step.
 
@@ -383,7 +383,7 @@ Running attacks manually one at a time makes it difficult to correlate traffic t
 
 1. Assigning each attack type its own timestamped `.pcap` file, so flow extraction and labeling can be done per attack with no ambiguity.
 2. Automatically analyzing each pcap after the attack completes, producing concrete counts (TCP flows, UDP flows, ICMP flows, forward/backward packet split, total bytes) that tell you exactly how many flows each attack generated.
-3. Outputting a timestamped `report_<ts>.json` + `report_<ts>.csv` under `/home/linkezio/Datasets/attack_testing/` that can be directly used to decide how much traffic to extract and how to balance a new dataset.
+3. Outputting a timestamped `report_<ts>.json` + `report_<ts>.log` under `logs/` that can be directly used to decide how much traffic to extract and how to balance a new dataset.
 
 ### Covered attack types
 
@@ -435,10 +435,10 @@ python3 scripts/attack_orchestrator.py --dry-run
 sudo python3 scripts/attack_orchestrator.py --wordlist /usr/share/wordlists/rockyou.txt
 ```
 
-Output files land in `/home/linkezio/Datasets/attack_testing/`:
+Output files land in `logs/`:
 - `<attack>_<timestamp>.pcap` — raw traffic capture per attack type
-- `report_<timestamp>.json` — structured metrics per attack (full)
-- `report_<timestamp>.csv` — same data in flat CSV (ready to import into pandas)
+- `report_<timestamp>.json` — structured report with a `session` metadata block (target, iface, totals, capture warnings) and an `attacks` array with per-attack metrics; if a pcap is empty the entry includes a `capture_warning` explaining why metrics are zero
+- `report_<timestamp>.log` — human-readable version of the same report: per-attack command list, flow/packet/byte breakdown, and a summary table; replaces the old CSV because the flat CSV offered no extra value over the JSON and was less readable for quick inspection
 
 ---
 
@@ -477,12 +477,53 @@ Attacks were sent from a PC (BRT, UTC-3) using `attack_orchestrator.py` against 
 
 ```bash
 python3 scripts/evaluate_ids.py \
-    --orchestrator results/report_<timestamp>.csv \
+    --orchestrator results/report_<timestamp>.json \
     --ids          results/ids_run_<timestamp>.md \
     --tz-offset    3 \
     --idle-slack   30 \
     --output       results/evaluation_<timestamp>.json
 ```
+
+---
+
+## IDS Real-World Evaluation (2026-05-31)
+
+### Setup
+
+Same topology as the 2026-05-23 evaluation: attacks sent from a PC (BRT, UTC-3) via `attack_orchestrator.py` against VIM 4 (UTC) running `network_ids.py` (Phase 1 + Phase 2). Key difference from the previous session: the script now runs **both phases**, so Phase 2 label classification is available for every alert in this session.
+
+**Critical issue — PCAP capture failed on the attack side.** All 8 attack `.pcap` files are 0 bytes (`"capture_warning": "pcap file not found"`). The attacks executed (commands ran, real traffic was generated and detected by the IDS), but the local `tcpdump` capture on the PC failed — likely a permissions issue (`CAP_NET_RAW` or root required). No raw traffic capture is available from this session for dataset augmentation.
+
+### Phase 2 alert breakdown (2026-05-31)
+
+| Attack | Duration | IDS alerts | P2 label | Observation |
+|--------|----------|------------|----------|-------------|
+| recon | 54 s | 961 | `recon` ✅ | Correctly classified at high confidence (70–89%) |
+| dos | 91 s | ~10,637 | `dos` ✅ | Dominates all P2 output |
+| ddos | 61 s | 265 | `ddos` / `dos` ⚠️ | Most DDoS flows classified as `dos` |
+| bruteforce | 17 s | 6 | `bruteforce` / `dos` ⚠️ | Near-total misclassification as `dos` |
+| web | 0.7 s | 0 | — | FN — too short for netflower to emit flow |
+| mitm | 0.5 s | 1 | `mitm` | FN — 1 alert likely an artifact |
+| spoofing | 2.7 s | 3 | `spoofing` | FN — too short |
+| malware | 7 s | 0 | — | FN — flow emitted after evaluation window |
+
+**Session totals:** 20,097 flows processed · 11,907 alerts · 59.2% binary detection rate · 34 flows forwarded to Phase 3 (0.28%).
+
+**Inference latency:** Phase 1 avg 3.75 ms / max 169.6 ms · Phase 2 avg 5.27 ms / max 17.36 ms · E2E avg 14.41 ms / max 175.11 ms.
+
+**System load:** CPU avg 22.3% / max 35.1% · RAM peak 1,112 MB · Net avg ↓4,294 KB/s ↑1,508 KB/s.
+
+### Key findings from 2026-05-31
+
+**DoS dominance in Phase 2 confirmed again.** 89.3% of all alerts are classified as `dos`, including traffic from `ddos` (hping3 --rand-source) and `bruteforce` (medusa). This is consistent with the 2026-05-23 session and has the same root cause: the `dos` class dominates training data volume, and the model maps any high-rate flow to `dos` in the absence of discriminating features (source diversity for DDoS, failed-auth signals for brute-force).
+
+**Short attacks remain a systematic blind spot.** `web`, `mitm`, `spoofing`, and `malware` attacks lasted less than 10 s each. netflower's `idle_timeout=30s` means the flows are not emitted until 30 s after the attack ends, placing them outside any reasonable detection window. The solution is to lower `idle_timeout` (trading flow feature completeness for timeliness) or implement micro-flow detection.
+
+**Late DDoS flows.** The final 54 s of the IDS log (20:48:27–20:49:21 UTC, after all attacks ended) consists entirely of DDoS flows with randomized source IPs being flushed by the idle timeout. These flows have `flow_byts_s=0` but are still classified as `ddos` at 98.8% Phase 1 confidence.
+
+**Phase 3 routing working.** 34 low-confidence flows were correctly tagged `LOW_CONF→P3` (28 best-guess `mitm`, 6 best-guess `spoofing`), confirming the routing logic is functioning.
+
+**Full session report:** `docs/results/session_report_20260531.md`
 
 ---
 

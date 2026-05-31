@@ -23,7 +23,6 @@ Options:
 """
 
 import argparse
-import csv
 import json
 import os
 import signal
@@ -40,7 +39,7 @@ from typing import Dict, List, Optional
 
 DEFAULT_TARGET   = "192.168.100.5"
 DEFAULT_IFACE    = "eth0"
-DEFAULT_OUTPUT   = "/home/linkezio/Datasets/attack_testing"
+DEFAULT_OUTPUT   = "/home/linkezio/Projects/A Hierarchical MEC and IoT Solution for Cyber-Attack Detection in 6G Networks/logs/"
 DEFAULT_DURATION = 30  # seconds for time-bounded attacks
 
 # Standard wordlist paths (Arch Linux / rockyou)
@@ -83,6 +82,7 @@ class AttackStats:
     commands_run:     List[str] = field(default_factory=list)
     skipped:          bool = False
     skip_reason:      str = ""
+    capture_warning:  str = ""
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,11 @@ def analyze_pcap(pcap_path: str, target: str) -> Dict:
     }
 
     p = Path(pcap_path)
-    if not p.exists() or p.stat().st_size == 0:
+    if not p.exists():
+        stats["capture_warning"] = "pcap file not found"
+        return stats
+    if p.stat().st_size == 0:
+        stats["capture_warning"] = "pcap empty — check interface name and target reachability"
         return stats
 
     stats["pcap_size_bytes"] = p.stat().st_size
@@ -271,6 +275,8 @@ def run_attack(
         pcap_stats = analyze_pcap(pcap_path, target)
         for k, v in pcap_stats.items():
             setattr(stats, k, v)
+        if stats.capture_warning:
+            print(f"  [!] {stats.capture_warning}")
 
     print_stats(stats)
     return stats
@@ -392,30 +398,109 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str]) 
 
 # ── Report generation ─────────────────────────────────────────────────────────
 
-def save_report(results: List[AttackStats], output_dir: str) -> None:
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base = Path(output_dir) / f"report_{ts}"
+def _session_meta(results: List[AttackStats], target: str, iface: str) -> Dict:
+    ran = [r for r in results if not r.skipped]
+    start_times = [r.start_time for r in ran if r.start_time]
+    end_times   = [r.end_time   for r in ran if r.end_time]
+    warnings    = [r.attack for r in ran if r.capture_warning]
+    return {
+        "target":           target,
+        "iface":            iface,
+        "session_start":    min(start_times) if start_times else "",
+        "session_end":      max(end_times)   if end_times   else "",
+        "total_attacks":    len(results),
+        "attacks_run":      len(ran),
+        "attacks_skipped":  sum(1 for r in results if r.skipped),
+        "attacks_with_capture_warning": warnings,
+        "total_packets":    sum(r.total_packets for r in ran),
+        "total_bytes":      sum(r.total_bytes   for r in ran),
+        "total_flows":      sum(r.total_flows   for r in ran),
+        "total_duration_s": round(sum(r.duration_s for r in ran), 2),
+    }
 
-    # JSON
+
+def _format_log(results: List[AttackStats], session: Dict) -> str:
+    lines = []
+    W = 62
+    lines.append("═" * W)
+    lines.append("  ATTACK ORCHESTRATOR — SESSION REPORT")
+    lines.append(f"  Target  : {session['target']}")
+    lines.append(f"  Iface   : {session['iface']}")
+    lines.append(f"  Start   : {session['session_start']}")
+    lines.append(f"  End     : {session['session_end']}")
+    lines.append(f"  Attacks : {session['attacks_run']} run, {session['attacks_skipped']} skipped")
+    lines.append("═" * W)
+
+    for r in results:
+        lines.append("")
+        lines.append(f"── {r.label} [{r.attack}] " + "─" * max(0, W - len(r.label) - len(r.attack) - 6))
+        if r.skipped:
+            lines.append(f"  SKIPPED — {r.skip_reason}")
+            continue
+        lines.append(f"  Start      : {r.start_time}")
+        lines.append(f"  End        : {r.end_time}  ({r.duration_s:.1f}s wall)")
+        lines.append(f"  Commands   : {len(r.commands_run)}")
+        for cmd in r.commands_run:
+            lines.append(f"    $ {cmd}")
+        lines.append(f"  Flows      : TCP {r.tcp_flows} / UDP {r.udp_flows} / ICMP {r.icmp_flows}  = {r.total_flows} total")
+        lines.append(f"  Packets    : fwd {r.fwd_packets} / bwd {r.bwd_packets}  = {r.total_packets} total")
+        lines.append(f"  Bytes      : {r.total_bytes:,}")
+        lines.append(f"  Cap dur    : {r.capture_duration:.1f}s")
+        pcap_name = Path(r.pcap_path).name
+        size_str  = f"{r.pcap_size_bytes:,} B"
+        warn_str  = f"  ⚠ {r.capture_warning}" if r.capture_warning else ""
+        lines.append(f"  PCAP       : {pcap_name} ({size_str}){warn_str}")
+
+    lines.append("")
+    lines.append("═" * W)
+    lines.append("  SUMMARY")
+    lines.append("─" * W)
+    hdr = f"  {'Attack':<14} {'Label':<18} {'Flows':>6} {'Pkts':>8} {'Bytes':>12} {'Dur':>7}"
+    lines.append(hdr)
+    lines.append("─" * W)
+    for r in results:
+        if r.skipped:
+            lines.append(f"  {r.attack:<14} {'SKIPPED':<18} {'—':>6} {'—':>8} {'—':>12} {'—':>7}  ({r.skip_reason})")
+        else:
+            warn = "  ⚠" if r.capture_warning else ""
+            lines.append(
+                f"  {r.attack:<14} {r.label:<18} {r.total_flows:>6,} {r.total_packets:>8,} "
+                f"{r.total_bytes:>12,} {r.duration_s:>6.1f}s{warn}"
+            )
+    lines.append("─" * W)
+    lines.append(
+        f"  {'TOTAL':<14} {'':<18} {session['total_flows']:>6,} {session['total_packets']:>8,} "
+        f"{session['total_bytes']:>12,} {session['total_duration_s']:>6.1f}s"
+    )
+    lines.append("═" * W)
+    return "\n".join(lines) + "\n"
+
+
+def save_report(results: List[AttackStats], output_dir: str,
+                target: str = DEFAULT_TARGET, iface: str = DEFAULT_IFACE) -> None:
+    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base    = Path(output_dir) / f"report_{ts}"
+    session = _session_meta(results, target, iface)
+
+    # JSON — structured with session metadata
     json_path = str(base) + ".json"
+    payload = {
+        "session": session,
+        "attacks": [asdict(r) for r in results],
+    }
     with open(json_path, "w") as f:
-        json.dump([asdict(r) for r in results], f, indent=2)
+        json.dump(payload, f, indent=2)
 
-    # CSV — flat fields (list fields serialized as JSON strings)
-    csv_path = str(base) + ".csv"
-    if results:
-        keys = [k for k in asdict(results[0]).keys() if k != "commands_run"]
-        with open(csv_path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=keys)
-            w.writeheader()
-            for r in results:
-                row = {k: v for k, v in asdict(r).items() if k != "commands_run"}
-                w.writerow(row)
+    # Human-readable log
+    log_path = str(base) + ".log"
+    log_text = _format_log(results, session)
+    with open(log_path, "w") as f:
+        f.write(log_text)
 
     print(f"\n{'═'*60}")
     print(f"  RELATÓRIO SALVO")
     print(f"  JSON : {json_path}")
-    print(f"  CSV  : {csv_path}")
+    print(f"  LOG  : {log_path}")
     print(f"{'═'*60}")
 
 
@@ -521,7 +606,7 @@ def main() -> None:
 
     if not args.dry_run:
         print_summary(results)
-        save_report(results, args.output)
+        save_report(results, args.output, target=args.target, iface=args.iface)
 
 
 if __name__ == "__main__":
