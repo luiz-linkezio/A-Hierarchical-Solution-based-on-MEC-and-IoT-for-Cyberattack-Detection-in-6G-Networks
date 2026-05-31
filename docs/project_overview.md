@@ -244,20 +244,44 @@ Models are saved at `models/umap_reducer_<YYYYMMDD_HHMMSS>.pkl` and `models/hdbs
 
 ---
 
-## Real-Time IDS Script (VIM 4)
+## Real-Time IDS Scripts
 
-`scripts/network_binary_ids.py` is the edge-deployment component for Phase 1.
+Two scripts handle live traffic classification. They share the same capture infrastructure (`netflower.capture_live`) but differ in which phases are executed.
+
+### `scripts/network_binary_ids.py` — Phase 1 only (lightweight edge deployment)
+
+This is the minimal deployment intended for resource-constrained edge nodes (VIM 4). It runs only the binary classifier and does not load the Phase 2 model, keeping memory footprint and startup time low.
 
 **How it works:**
 
-1. Calls `netflower.capture_live()` directly on the network interface (`INTERFACE`, default `eth0`), registering an `on_flow` callback. Each flow is emitted by netflower the moment it completes — either on TCP FIN/RST or after `IDLE_TIMEOUT` seconds of inactivity (default 30 s), up to a maximum of `FLOW_TIMEOUT` seconds (default 120 s). This eliminates the previous chunk-based architecture (tcpdump + PCAP rotation) and its associated latency: flows are classified as soon as they close, not after accumulating 1 MB of traffic.
-2. For each completed flow, the callback aligns the flow dict to the model's expected feature set (fills missing keys with 0; reads `model.feature_names_in_` when available, falls back to `FINAL_FEATURES` from constants).
-3. Runs `model.predict_proba()` on the single-row DataFrame, timing the call with `time.perf_counter()` to measure per-flow inference latency in milliseconds. The latency is accumulated across all flows so average and peak inference times can be reported at the end of the session.
-4. Logs an `[ALERT]` for any flow where the attack-class probability exceeds `THRESHOLD` (auto-updated by `training.ipynb` after each Optuna run via regex substitution; no longer the old default of 0.5). The alert line always includes the confidence percentage and the inference time for that flow. Printing all flow features on alert is controlled by `VERBOSE_ALERTS` (default `False`, enabled by setting env var `VERBOSE_ALERTS=1`) — disabled by default because printing 65+ feature values per alert makes the terminal unreadable in production.
-5. A background stats thread logs total flows processed, alert count, average inference time, and maximum inference time every 3 seconds.
-6. At startup, creates a timestamped Markdown report in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.md` with configuration, model info, and an alert table. Each detected alert is appended to the table immediately (detection time, confidence, and key flow identifiers). At shutdown (Ctrl+C), a runtime summary is appended (end time, duration, total flows, total alerts, average and maximum inference latency).
+1. At startup, loads the Phase 1 binary classifier (`MODEL_PATH`). The feature list is read from `model.feature_names_in_` when available, falling back to `FINAL_FEATURES` from `constants/features.py`.
+2. Calls `netflower.capture_live()` on the network interface (`INTERFACE`, default `eth0`), registering an `on_flow` callback. Each flow is emitted by netflower the moment it completes — either on TCP FIN/RST or after `IDLE_TIMEOUT` seconds of inactivity (default 30 s), up to a maximum of `FLOW_TIMEOUT` seconds (default 120 s).
+3. **Phase 1** — For each completed flow, aligns the flow dict to the model's expected feature set (fills missing keys with 0) and runs `model.predict_proba()`. Flows below `THRESHOLD` are discarded as benign.
+4. Logs an `[ALERT]` for every flagged flow with Phase 1 confidence and inference latency. `VERBOSE_ALERTS=1` prints all flow features.
+5. A background stats thread logs every 3 seconds: total flows, alerts, avg/max inference latency.
+6. Creates a timestamped log in `docs/results/binary_ids_run_<YYYYMMDD_HHMMSS>.log` at startup; appends a runtime summary at shutdown.
 
-The script reads `constants/features.py` and `constants/labels.py` at startup to determine input features and benign class labels.
+**Why a Phase-1-only variant exists:** The two-phase script (`network_ids.py`) loads two models and runs two inference passes per flagged flow. For edge nodes where memory or latency is constrained, this is unnecessary when the only required output is a binary benign/attack decision. `network_binary_ids.py` is also easier to validate in isolation before deploying the full pipeline.
+
+The script reads `constants/features.py` and `constants/labels.py` at startup. `training.ipynb` auto-updates `MODEL_PATH` and `THRESHOLD` via regex after each Phase 1 training run.
+
+---
+
+### `scripts/network_ids.py` — Phase 1 + Phase 2 (full hierarchical deployment)
+
+This script runs both phases in sequence for every flagged flow.
+
+**How it works:**
+
+1. At startup, loads both the Phase 1 binary classifier (`MODEL_PATH`) and the Phase 2 multi-class classifier (`P2_MODEL_PATH`).
+2. Same `netflower.capture_live()` setup as the binary script.
+3. **Phase 1** — Binary gate: benign vs. attack. Flows below `THRESHOLD` are discarded.
+4. **Phase 2** — Flows that pass Phase 1 are classified into a specific attack type (ddos, dos, malware, bruteforce, mitm, web, recon, spoofing, or benign as fallback). If `max(proba) < PHASE2_CONFIDENCE_THRESHOLD` (default `0.4`), the flow is tagged `LOW_CONF→P3` — a routing marker for Phase 3 once implemented.
+5. Logs `[ALERT]` with Phase 1 confidence, Phase 2 label and confidence, and per-phase latency.
+6. Background stats thread logs per-phase avg/max inference and low-confidence count every 3 seconds.
+7. Creates a timestamped log in `docs/results/ids_run_<YYYYMMDD_HHMMSS>.log`; appends a Phase 2 attack-type breakdown at shutdown.
+
+**Note on auto-update by `training.ipynb`:** The notebook currently updates `MODEL_PATH` and `THRESHOLD` via regex after Phase 1 training. The same substitution should be extended to rewrite `P2_MODEL_PATH` after Phase 2 training so the script always points to the latest model without a manual step.
 
 ---
 
@@ -272,6 +296,7 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   ├── raw/               # downloaded PCAPs and generated flow CSVs
 │   └── sqlite/data.db     # unified SQLite database (~190 GB)
 ├── docs/
+│   ├── artigo-TCC.docx      # TCC article (ABNT format) — pre-filled from project_overview.md
 │   ├── features_report.txt  # last feature cleaning summary from training
 │   ├── labels_list.txt      # human-readable label taxonomy
 │   ├── project_overview.md  # this file
@@ -295,8 +320,11 @@ The script reads `constants/features.py` and `constants/labels.py` at startup to
 │   ├── dataset_analysis/  # per-dataset Markdown reports
 │   └── images/            # EDA plots
 ├── scripts/
-│   ├── network_binary_ids.py     # live binary IDS for VIM 4 (Phase 1)
+│   ├── network_binary_ids.py     # live Phase-1-only IDS for VIM 4 (binary: benign vs attack)
+│   ├── network_ids.py            # live Phase-1 + Phase-2 IDS (binary gate + attack-type classification)
 │   ├── attack_orchestrator.py    # orchestrates attacks + quantifies flows for IDS validation
+│   ├── evaluate_ids.py           # cross-correlates orchestrator report with IDS alert log
+│   ├── fill_artigo.py            # one-off script that populated docs/artigo-TCC.docx
 │   ├── benign_trafic_simulator.sh  # captures real personal traffic as benign pcap
 │   └── trafic_capturer.sh          # generic tcpdump capture helper
 └── requirements.txt
@@ -414,10 +442,55 @@ Output files land in `/home/linkezio/Datasets/attack_testing/`:
 
 ---
 
+## IDS Real-World Evaluation (2026-05-23)
+
+### Setup
+
+Attacks were sent from a PC (BRT, UTC-3) using `attack_orchestrator.py` against the VIM 4 (UTC) running `network_binary_ids.py`. The evaluation script `scripts/evaluate_ids.py` cross-correlates both reports by shifting PC timestamps by +3h and assigning each IDS alert to whichever attack window was active at that moment (plus a 30s idle-slack to catch flows emitted after the attack ended due to netflower's idle timeout).
+
+### Results — 2026-05-23 (report `evaluation_20260523.json`)
+
+| Attack | Duration | Alerts | Phase 2 correct | Phase 2 % |
+|--------|----------|--------|-----------------|-----------|
+| recon | 74 s | 3,075 | 950 | 30.9% ⚠️ |
+| dos | 90 s | 4,938 | 4,938 | 100.0% ✅ |
+| ddos | 60 s | 3,124 | 0 | 0.0% ❌ |
+| bruteforce | 19 s | 533 | 0 | 0.0% ❌ |
+| web | 0.65 s | 0 | — | FN ❌ |
+| mitm | 0.53 s | 0 | — | FN ❌ |
+| spoofing | 2.7 s | 0 | — | FN ❌ |
+| malware | 7.0 s | 0 | — | FN ❌ |
+
+**Phase 1 (binary):** 11,670 / 11,674 alerts fell within real attack windows — FP rate 0.03%. Excellent.
+
+**Phase 2 (type):** 50.5% overall accuracy across detected flows (5,888 / 11,670).
+
+### Root causes
+
+**"DoS dominance" in Phase 2:** `ddos` (99.7% → classified as `dos`) and `bruteforce` (84.2% → `dos`) are systematically misclassified as `dos`. The `dos` class is over-represented in the training data (largest per-class sample count), so the Phase 2 classifier learns a decision boundary biased toward `dos` for any high-rate, high-packet-count flow — which is exactly what `ddos` and `bruteforce` look like in raw netflow features. The fix is either stronger class-weight balancing in the Phase 2 model or feature engineering to distinguish these classes (e.g., source diversity for DDoS, failed-auth counters for brute-force).
+
+**Short attacks → FN:** `web` (0.65 s), `mitm` (0.53 s), `spoofing` (2.7 s), and `malware` (7 s) all produced zero alerts. netflower only emits a flow after `idle_timeout=30s` of inactivity or a TCP FIN/RST. Attacks shorter than ~10 s do not generate enough sustained traffic to cross that threshold before they end, and the resulting flows are emitted 30 s later — after the evaluation window has closed. This is a real-time detection gap for short-burst attacks; the evaluation script accounts for it with `--idle-slack` but the attacks were too brief even for that. The solution in production is to lower `idle_timeout` (at the cost of fewer features per flow) or to use a sliding-window approach for micro-flows.
+
+**Timezone mismatch:** PC runs BRT (UTC-3), VIM 4 runs UTC. This is handled automatically by `evaluate_ids.py --tz-offset 3` but should be fixed at the OS level to avoid confusion in future logs.
+
+### How to re-run the evaluation
+
+```bash
+python3 scripts/evaluate_ids.py \
+    --orchestrator results/report_<timestamp>.csv \
+    --ids          results/ids_run_<timestamp>.md \
+    --tz-offset    3 \
+    --idle-slack   30 \
+    --output       results/evaluation_<timestamp>.json
+```
+
+---
+
 ## What Is Still Pending
 
 | Phase | Status |
 |-------|--------|
-| Phase 1 — Binary classifier | Done. Model trained, script deployed. |
-| Phase 2 — Multi-classifier | Done. Model trained and saved. Real-time script not yet implemented. |
-| Phase 3 — Clustering (UMAP + HDBSCAN) | Done. UMAP + HDBSCAN pipeline implemented in `training.ipynb`. Models saved to `models/`. Real-time script not yet implemented. |
+| Phase 1 — Binary classifier | Done. Model trained and deployed. Available in both `network_binary_ids.py` (Phase 1 only) and `network_ids.py` (Phase 1 + 2). |
+| Phase 2 — Multi-classifier | Done. Model trained and saved. Integrated into `network_ids.py` — runs sequentially after Phase 1 for every flagged flow. Low-confidence flows are tagged `LOW_CONF→P3` and counted, ready for Phase 3 routing once implemented. |
+| Phase 3 — Clustering (UMAP + HDBSCAN) | Done in `training.ipynb`. Models saved to `models/`. Real-time routing from Phase 2 low-confidence flows not yet implemented in `network_ids.py`. |
+| `training.ipynb` P2 model auto-update | The notebook updates `MODEL_PATH` and `THRESHOLD` via regex after Phase 1 training. The same substitution should be extended to also rewrite `P2_MODEL_PATH` in `network_ids.py` after Phase 2 training so the script always points to the latest model without a manual step. |
