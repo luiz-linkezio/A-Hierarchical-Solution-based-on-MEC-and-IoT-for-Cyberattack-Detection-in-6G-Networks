@@ -40,11 +40,11 @@ from constants.labels import ALL_LABELS, BENIGN_LABELS, MALICIOUS_LABELS
 INTERFACE = "eth0"
 
 # Phase 1 — Binary classifier (benign vs. attack)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "binary_classifier_20260518_130014.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "binary_classifier_20260601_001154.pkl")
 
 # Phase 2 — Multi-class classifier (attack type)
 # Auto-updated by notebooks/training.ipynb after each training run.
-P2_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "multiclass_classifier_20260518_130014.pkl")
+P2_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "multiclass_classifier_20260601_001154.pkl")
 
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "logs")
 

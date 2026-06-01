@@ -1,0 +1,132 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% sbc-template.sty  —  SBC Conferences Style File
+%% Based on the official SBC template (sbc.org.br)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{sbc-template}[2024/01/01 SBC Conferences Template]
+
+%% ─── Required packages ───────────────────────────────────────────────────────
+\RequirePackage{mathptmx}       % Times-compatible font (replaces obsolete `times`)
+\RequirePackage{geometry}
+\RequirePackage{titlesec}
+\RequirePackage{caption}
+\RequirePackage{indentfirst}
+
+%% ─── Page geometry ───────────────────────────────────────────────────────────
+\geometry{
+  a4paper,
+  top=3.5cm, bottom=2.5cm,
+  left=3.0cm, right=3.0cm,
+  noheadfoot
+}
+
+%% No page numbers
+\pagestyle{empty}
+
+%% ─── Paragraph spacing ───────────────────────────────────────────────────────
+\setlength{\parskip}{6pt plus 1pt minus 1pt}
+\setlength{\parindent}{1.27cm}
+
+%% ─── Author / address machinery ─────────────────────────────────────────────
+\newcounter{@instcnt}
+
+\newcommand{\inst}[1]{\unskip\textsuperscript{#1}}
+\newcommand{\nextinstitute}{\par\medskip}
+
+\newcommand{\@sbcaddress}{}
+\renewcommand{\address}[1]{\gdef\@sbcaddress{#1}}
+
+%% Email command (typewriter font)
+\newcommand{\email}[1]{\texttt{#1}}
+
+%% ─── Title block ─────────────────────────────────────────────────────────────
+\renewcommand{\maketitle}{%
+  \thispagestyle{empty}%
+  \begin{center}
+    \vspace*{-6pt}%
+    {\fontsize{16}{20}\bfseries\selectfont\@title\par}%
+    \vspace{12pt}%
+    {\fontsize{12}{15}\bfseries\selectfont\@author\par}%
+    \vspace{12pt}%
+    {\fontsize{12}{15}\selectfont\@sbcaddress\par}%
+  \end{center}%
+  \vspace{6pt}%
+}
+
+%% ─── Abstract / Resumo ───────────────────────────────────────────────────────
+\renewenvironment{abstract}{%
+  \vspace{6pt}%
+  \begin{list}{}{%
+      \setlength{\leftmargin}{0.8cm}%
+      \setlength{\rightmargin}{0.8cm}%
+      \setlength{\listparindent}{0pt}%
+      \setlength{\itemindent}{0pt}%
+      \setlength{\topsep}{0pt}%
+      \setlength{\parsep}{0pt}%
+  }%
+  \item[]\fontsize{12}{15}\selectfont{\bfseries Abstract.}\ \ignorespaces
+}{%
+  \end{list}\vspace{6pt}%
+}
+
+\newenvironment{resumo}{%
+  \vspace{6pt}%
+  \begin{list}{}{%
+      \setlength{\leftmargin}{0.8cm}%
+      \setlength{\rightmargin}{0.8cm}%
+      \setlength{\listparindent}{0pt}%
+      \setlength{\itemindent}{0pt}%
+      \setlength{\topsep}{0pt}%
+      \setlength{\parsep}{0pt}%
+  }%
+  \item[]\fontsize{12}{15}\selectfont{\bfseries Resumo.}\ \ignorespaces
+}{%
+  \end{list}\vspace{6pt}%
+}
+
+%% ─── Section headings ────────────────────────────────────────────────────────
+\titleformat{\section}
+  {\fontsize{13}{16}\bfseries}{\thesection.}{0.4em}{}
+\titlespacing*{\section}{0pt}{12pt plus 2pt minus 2pt}{4pt}
+
+\titleformat{\subsection}
+  {\fontsize{12}{15}\bfseries}{\thesubsection}{0.4em}{}
+\titlespacing*{\subsection}{0pt}{8pt}{3pt}
+
+\titleformat{\subsubsection}
+  {\fontsize{12}{15}\bfseries}{\thesubsubsection}{0.4em}{}
+\titlespacing*{\subsubsection}{0pt}{6pt}{3pt}
+
+%% ─── Captions (Helvetica 10pt bold) ─────────────────────────────────────────
+\captionsetup{
+  font={small,bf,sf},
+  labelsep=space,
+  aboveskip=6pt,
+  belowskip=6pt,
+  justification=centering,
+  singlelinecheck=true
+}
+
+%% ─── Bibliography ────────────────────────────────────────────────────────────
+\renewenvironment{thebibliography}[1]{%
+  \section*{\refname}%
+  \fontsize{12}{15}\selectfont
+  \list{\@biblabel{\@arabic\c@enumiv}}{%
+    \settowidth\labelwidth{\@biblabel{#1}}%
+    \leftmargin\labelwidth
+    \advance\leftmargin 0.5cm
+    \itemindent -0.5cm
+    \@openbib@code
+    \usecounter{enumiv}%
+    \let\p@enumiv\@empty
+    \renewcommand\theenumiv{\@arabic\c@enumiv}%
+  }%
+  \sloppy
+  \clubpenalty4000
+  \@clubpenalty\clubpenalty
+  \widowpenalty4000%
+  \sfcode`\.\@m
+}{%
+  \def\@noitemerr{\@latex@warning{Empty `thebibliography' environment}}%
+  \endlist
+}
