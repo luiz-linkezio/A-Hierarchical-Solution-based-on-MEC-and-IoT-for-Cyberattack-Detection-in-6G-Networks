@@ -41,7 +41,7 @@ PCAPs are a universal network capture format: every packet is recorded identical
 After unification across datasets, the label set is:
 
 - **Benign**: `benign`
-- **Malicious**: `ddos`, `dos`, `malware`, `bruteforce`, `mitm`, `web`, `spoofing`, `recon`
+- **Malicious**: `dos` (includes DDoS — see label mapping below), `malware`, `bruteforce`, `mitm`, `web`, `spoofing`, `recon`
 
 ---
 
@@ -94,6 +94,9 @@ Streams every `merged_*.csv` into `data/sqlite/data.db` in 50 000-row chunks, on
 
 **5. Analyse (`dataset_analysis.ipynb`) and train (`training.ipynb`).**  
 Both notebooks query the database directly, never touching raw CSVs or PCAPs again.
+
+**Label mapping (`LABEL_MAP`)** — after loading data from the DB, `training.ipynb` applies `LABEL_MAP = {"ddos": "dos"}` to the `label` column before any feature engineering or model training. This merges the `ddos` class into `dos`, treating both as the same attack family. The rationale: DDoS is a volumetric extension of DoS — both aim to exhaust resources, and their network-flow features (high packet rates, short flows, flag anomalies) are statistically similar enough that maintaining two separate classes adds noise without meaningful discrimination gain. Keeping them merged also reduces class count from 9 to 8 (7 attack + 1 benign), which simplifies the Phase 2 multiclass problem.
+
 `training.ipynb` is organised into sections: **Imports**, **Configuration** (a single section combining data-source inputs — `DB_PATH`, `TABLE`, sampling params — and algorithm constants such as thresholds and fixed LightGBM params), followed by the three training phases. Keeping inputs and constants in one place makes it faster to adjust a run without scrolling between sections.
 
 `training.ipynb` runs all three phases end-to-end and saves all models to `models/`. After each run it also writes a timestamped Markdown results document to `docs/results/training_<YYYYMMDD_HHMMSS>.md`, capturing the full training configuration, feature set, Optuna results, classification reports, model paths, and **inline plot images** for every phase. The three plots — Phase 1 feature importance, Phase 2 feature importance, and the Phase 3 UMAP cluster scatter — are saved as PNGs under `docs/results/images/` (named with the same timestamp as the report) and referenced by relative Markdown image links inside the report, so the document is self-contained and renders correctly in any Markdown viewer.
@@ -191,15 +194,14 @@ Receives flows flagged as "attack" by Phase 1 (plus a small benign fallback path
 |-------|-------------|
 | `benign` | Fallback — benign flows Phase 1 incorrectly flagged as attack |
 | `bruteforce` | Brute-force attacks |
-| `ddos` | DDoS attacks |
-| `dos` | DoS attacks |
+| `dos` | DoS/DDoS attacks (merged — see label mapping) |
 | `malware` | Malware traffic |
 | `mitm` | Man-in-the-middle attacks |
 | `recon` | Reconnaissance traffic |
 | `spoofing` | Spoofing attacks |
 | `web` | Web-based attacks |
 
-The model is trained on all 8 attack classes without relabelling. Low-confidence predictions are forwarded to Phase 3 for unsupervised analysis.
+The model is trained on all 7 attack classes. `ddos` rows are relabelled to `dos` via `LABEL_MAP` immediately after loading, before any feature engineering or sampling decisions. Low-confidence predictions are forwarded to Phase 3 for unsupervised analysis.
 
 ### Training setup
 

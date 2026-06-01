@@ -34,7 +34,7 @@ from constants.labels import BENIGN_LABELS
 
 INTERFACE = "eth0"
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "binary_classifier_20260518_130014.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "binary_classifier_20260601_001154.pkl")
 
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "logs")
 
