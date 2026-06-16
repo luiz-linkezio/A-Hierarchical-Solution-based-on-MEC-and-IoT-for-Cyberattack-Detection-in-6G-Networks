@@ -123,6 +123,57 @@ def get_true_label(ts_sec: int, windows):
     return "outside"
 
 
+def power_w(cpu_pct: float, p_idle: float, p_max: float) -> float:
+    """Linear CPU-utilization power model: P = P_idle + (P_max - P_idle) * util."""
+    return p_idle + (p_max - p_idle) * cpu_pct / 100.0
+
+
+def compute_session_energy(samples, windows, p_idle: float, p_max: float,
+                           max_gap_s: float = 10.0) -> dict:
+    """
+    Integrate power over a (ts_sec, cpu_pct) time series, splitting energy into
+    attack-window vs idle using the same ground-truth windows as get_true_label.
+    Each interval [t_i, t_{i+1}) is priced at the power implied by cpu_pct at t_i
+    (left rectangle rule) and capped at max_gap_s to avoid inflating energy
+    across large gaps in the log. Returns {} if fewer than 2 samples.
+    """
+    if len(samples) < 2:
+        return {}
+    total_j = total_s = 0.0
+    attack_j = attack_s = 0.0
+    idle_j = idle_s = 0.0
+    for (t0, cpu0), (t1, _) in zip(samples, samples[1:]):
+        dt = min(t1 - t0, max_gap_s)
+        if dt <= 0:
+            continue
+        p = power_w(cpu0, p_idle, p_max)
+        e = p * dt
+        total_j += e
+        total_s += dt
+        if get_true_label(t0, windows) == "outside":
+            idle_j += e
+            idle_s += dt
+        else:
+            attack_j += e
+            attack_s += dt
+    return {
+        "duration_s": total_s,
+        "total_energy_j": round(total_j, 2),
+        "total_energy_wh": round(total_j / 3600, 4),
+        "avg_power_w": round(total_j / total_s, 3) if total_s else 0.0,
+        "attack": {
+            "energy_j": round(attack_j, 2),
+            "duration_s": attack_s,
+            "avg_power_w": round(attack_j / attack_s, 3) if attack_s else 0.0,
+        },
+        "idle": {
+            "energy_j": round(idle_j, 2),
+            "duration_s": idle_s,
+            "avg_power_w": round(idle_j / idle_s, 3) if idle_s else 0.0,
+        },
+    }
+
+
 # ─── Log parsers ─────────────────────────────────────────────────────────────
 
 # Multiclass alert line (Phase 1 + Phase 2):
@@ -135,6 +186,12 @@ _RE_MULTI = re.compile(
 #   HH:MM:SS<TAB>P1%<TAB>src_ip<TAB>...
 _RE_BINARY = re.compile(
     r'^(\d{2}:\d{2}:\d{2})\t([\d.]+)%\t(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\t'
+)
+
+# Periodic background sample, independent of alert lines:
+#   [SYS_SNAPSHOT] HH:MM:SS  CPU x.x% | RAM ...
+_RE_SNAPSHOT = re.compile(
+    r'^\[SYS_SNAPSHOT\] (\d{2}:\d{2}:\d{2})\s+CPU\s+([\d.]+)%'
 )
 
 
@@ -164,6 +221,65 @@ def parse_binary_log(path: str):
                 ts_to_seconds(m.group(1)),
                 float(m.group(2)),
             )
+
+
+def parse_snapshot_log(path: str):
+    """Yield (ts_sec, cpu_pct) for each SYS_SNAPSHOT line."""
+    with open(path) as f:
+        for line in f:
+            m = _RE_SNAPSHOT.match(line)
+            if not m:
+                continue
+            yield (ts_to_seconds(m.group(1)), float(m.group(2)))
+
+
+_RE_SUMMARY_KV = re.compile(r'^(\w+)\s*=\s*(.+)$')
+
+
+def parse_summary_block(path: str) -> dict:
+    """Parse the '[SUMMARY] key = value' block written by _finalize_report().
+    Stops at the next '[SECTION]' header. Returns {} if no [SUMMARY] found
+    (e.g. the session was killed before a graceful shutdown)."""
+    in_summary = False
+    result = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line == "[SUMMARY]":
+                in_summary = True
+                continue
+            if in_summary:
+                if not line or line.startswith("["):
+                    break
+                m = _RE_SUMMARY_KV.match(line)
+                if m:
+                    result[m.group(1)] = m.group(2)
+    return result
+
+
+def compute_inference_energy(summary: dict, session_energy_j: float,
+                             p_idle: float, p_max: float) -> dict:
+    """Coarse approximation of total inference energy from [SUMMARY] aggregates:
+    one average power figure (at cpu_avg_pct) applied to every flow's average
+    e2e latency. Returns {} if the summary block is missing or incomplete."""
+    try:
+        flows = int(str(summary["flows_processed"]).replace(",", ""))
+        avg_e2e_ms = float(summary["avg_e2e_ms"])
+        cpu_avg_pct = float(summary["cpu_avg_pct"])
+    except (KeyError, ValueError):
+        return {}
+    if flows <= 0:
+        return {}
+    p = power_w(cpu_avg_pct, p_idle, p_max)
+    j_per_flow = p * (avg_e2e_ms / 1000.0)
+    total_j = j_per_flow * flows
+    pct = (total_j / session_energy_j * 100) if session_energy_j else 0.0
+    return {
+        "flows": flows,
+        "mj_per_flow": round(j_per_flow * 1000, 4),
+        "total_j": round(total_j, 4),
+        "pct_of_session_energy": round(pct, 2),
+    }
 
 
 # ─── Metric computation ───────────────────────────────────────────────────────
@@ -365,6 +481,31 @@ def print_binary_report(per_window, p1_stats, threshold_data, outside,
             print(f"  {b:3d}–{b+1:3d}%: {c:>6}  {bar}")
 
 
+def print_energy_report(energy: dict, inference: dict, p_idle: float, p_max: float) -> None:
+    print("\n╔══════════════════════════════════════════════════════════╗")
+    print("║   ENERGIA ESTIMADA (modelo linear CPU)                  ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+    if not energy:
+        print("\n  [sem linhas SYS_SNAPSHOT no log — seção de energia indisponível]")
+        return
+    print(f"\n  P_idle = {p_idle:.1f} W | P_max = {p_max:.1f} W")
+    print(f"  Duração da sessão        : {energy['duration_s']:.0f} s")
+    print(f"  Energia total            : {energy['total_energy_j']:.1f} J  "
+          f"({energy['total_energy_wh']:.4f} Wh)")
+    print(f"  Potência média           : {energy['avg_power_w']:.2f} W")
+    a, i = energy["attack"], energy["idle"]
+    print(f"    Durante ataques        : {a['energy_j']:.1f} J em {a['duration_s']:.0f} s "
+          f"({a['avg_power_w']:.2f} W médio)")
+    print(f"    Fora de ataques (idle) : {i['energy_j']:.1f} J em {i['duration_s']:.0f} s "
+          f"({i['avg_power_w']:.2f} W médio)")
+    if inference:
+        print("\n  Energia de inferência (aprox., via [SUMMARY] e2e_ms agregado):")
+        print(f"    {inference['mj_per_flow']:.4f} mJ/flow × {inference['flows']} flows "
+              f"= {inference['total_j']:.2f} J ({inference['pct_of_session_energy']:.2f}% da energia total)")
+    else:
+        print("\n  Energia de inferência    : [sem bloco SUMMARY — sessão não finalizada graciosamente]")
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -383,6 +524,10 @@ def main():
     ap.add_argument("--label-map", nargs="*", default=[],
                     metavar="FROM=TO",
                     help="Merge ground-truth labels before scoring, e.g. --label-map ddos=dos")
+    ap.add_argument("--p-idle", type=float, default=2.0,
+                    help="Idle power in watts for the linear CPU power model (default: 2.0)")
+    ap.add_argument("--p-max", type=float, default=11.0,
+                    help="Max-load power in watts for the linear CPU power model (default: 11.0)")
     args = ap.parse_args()
 
     label_map = {}
@@ -529,6 +674,22 @@ def main():
             "p1_confidence_global": global_stats,
             "threshold_sweep": td,
             "precision_curve": pc,
+        }
+
+    samples = sorted(parse_snapshot_log(args.ids))
+    energy = compute_session_energy(samples, windows, args.p_idle, args.p_max)
+    summary_block = parse_summary_block(args.ids)
+    inference_energy = (
+        compute_inference_energy(summary_block, energy["total_energy_j"], args.p_idle, args.p_max)
+        if energy else {}
+    )
+    print_energy_report(energy, inference_energy, args.p_idle, args.p_max)
+    if energy:
+        summary["energy"] = {
+            "p_idle_w": args.p_idle,
+            "p_max_w": args.p_max,
+            "session": energy,
+            "inference": inference_energy or None,
         }
 
     if args.output:
