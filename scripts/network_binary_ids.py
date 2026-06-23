@@ -13,6 +13,7 @@ Model format: scikit-learn pipeline saved as .pkl (joblib)
 import datetime
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -27,6 +28,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from constants.features import FINAL_FEATURES
 from constants.labels import BENIGN_LABELS
+from constants.power_telemetry import (
+    load_power_model, estimate_power_w, read_soc_temp_c, read_cluster_freqs_mhz,
+)
+
+_POWER_MODEL = load_power_model()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -147,6 +153,16 @@ def _sample_system_metrics(iface: str) -> dict:
             _rapl_state.update(uj=uj, t=t)
         except Exception:
             pass
+    # Fallback de potência para ARM (sem RAPL): modelo de CPU calibrado.
+    if "power_w" not in result and "cpu_pct" in result:
+        result["power_w"] = estimate_power_w(result["cpu_pct"], _POWER_MODEL)
+    # Telemetria extra (estimativa de energia + DVFS/térmica).
+    t = read_soc_temp_c()
+    if t is not None:
+        result["temp_c"] = t
+    freqs = read_cluster_freqs_mhz()
+    if freqs:
+        result["freqs"] = freqs
     return result
 
 
@@ -284,6 +300,11 @@ def _stats_printer(stop_event: threading.Event) -> None:
             parts.append(f"Net ↓{sys_m['recv_bs']/1024:.1f} KB/s ↑{sys_m.get('sent_bs', 0)/1024:.1f} KB/s")
         if "power_w" in sys_m:
             parts.append(f"Power {sys_m['power_w']:.1f} W")
+        if "temp_c" in sys_m:
+            parts.append(f"Temp {sys_m['temp_c']:.1f}C")
+        if "freqs" in sys_m:
+            fr = "/".join(f"{v}" for v in sys_m["freqs"].values())
+            parts.append(f"Freq {fr}MHz")
         if parts:
             sys_line = " | ".join(parts)
             log.info("[SYS]   %s", sys_line)
@@ -437,6 +458,13 @@ def main() -> None:
     try:
         handle.start()
         log.info("Live capture started.")
+        # netflower's capture_live pode sequestrar o SIGINT; reinstalamos os
+        # handlers APÓS o start para garantir shutdown gracioso (grava [SUMMARY])
+        # e encerramento confiável entre sessões via SIGINT ou SIGTERM.
+        def _graceful_stop(signum, frame):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGINT, _graceful_stop)
+        signal.signal(signal.SIGTERM, _graceful_stop)
         while True:
             time.sleep(1)
 

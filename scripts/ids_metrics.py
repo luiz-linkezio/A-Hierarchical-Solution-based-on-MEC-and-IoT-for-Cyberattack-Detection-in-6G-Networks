@@ -38,11 +38,15 @@ python3 ids_metrics.py ... --label-map ddos=dos
 
 import argparse
 import json
+import os
 import re
 import statistics
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from constants.power_telemetry import load_power_model
 
 # ─── Attack class ordering ────────────────────────────────────────────────────
 ATTACK_CLASSES_FULL    = ["recon", "dos", "ddos", "bruteforce", "web", "mitm", "spoofing", "malware"]
@@ -174,6 +178,20 @@ def compute_session_energy(samples, windows, p_idle: float, p_max: float,
     }
 
 
+def energy_band(samples, windows, model: dict) -> dict:
+    """Energia em 3 cenários (low/central/high) usando a banda de sensibilidade
+    do modelo de potência — torna a incerteza da estimativa explícita."""
+    s = model.get("sensitivity", {})
+    central = compute_session_energy(samples, windows, model["p_idle_w"], model["p_max_w"])
+    low = compute_session_energy(samples, windows,
+                                 s.get("p_idle_low", model["p_idle_w"]),
+                                 s.get("p_max_low", model["p_max_w"]))
+    high = compute_session_energy(samples, windows,
+                                  s.get("p_idle_high", model["p_idle_w"]),
+                                  s.get("p_max_high", model["p_max_w"]))
+    return {"low": low, "central": central, "high": high}
+
+
 # ─── Log parsers ─────────────────────────────────────────────────────────────
 
 # Multiclass alert line (Phase 1 + Phase 2):
@@ -231,6 +249,46 @@ def parse_snapshot_log(path: str):
             if not m:
                 continue
             yield (ts_to_seconds(m.group(1)), float(m.group(2)))
+
+
+# CPU% + RAM(MB) de cada SYS_SNAPSHOT (ex.: "CPU 22.5% | RAM 12.0% (1000 MB) | ...")
+_RE_SNAPSHOT_FULL = re.compile(
+    r'^\[SYS_SNAPSHOT\] (\d{2}:\d{2}:\d{2})\s+CPU\s+([\d.]+)%.*?\((\d+) MB\)'
+)
+
+
+def parse_snapshot_resources(path: str):
+    """Yield (ts_sec, cpu_pct, ram_mb) por SYS_SNAPSHOT. Fonte de recursos
+    independente do bloco [SUMMARY] (que pode não ser escrito se a sessão for
+    encerrada à força)."""
+    with open(path) as f:
+        for line in f:
+            m = _RE_SNAPSHOT_FULL.match(line)
+            if m:
+                yield (ts_to_seconds(m.group(1)), float(m.group(2)), int(m.group(3)))
+
+
+def resource_summary(samples_full) -> dict:
+    """Agrega CPU/RAM dos SYS_SNAPSHOT (substitui a dependência do [SUMMARY])."""
+    if not samples_full:
+        return {}
+    cpus = [c for _, c, _ in samples_full]
+    rams = [r for _, _, r in samples_full]
+    return {
+        "samples": len(samples_full),
+        "cpu_avg_pct": round(statistics.mean(cpus), 2),
+        "cpu_max_pct": round(max(cpus), 2),
+        "ram_avg_mb": round(statistics.mean(rams), 1),
+        "ram_max_mb": max(rams),
+    }
+
+
+def windows_attack_seconds(windows) -> int:
+    """Número de segundos distintos cobertos pelas janelas de ataque (união)."""
+    secs = set()
+    for _, s, e in windows:
+        secs.update(range(s, e + 1))
+    return len(secs)
 
 
 _RE_SUMMARY_KV = re.compile(r'^(\w+)\s*=\s*(.+)$')
@@ -442,6 +500,11 @@ def print_binary_report(per_window, p1_stats, threshold_data, outside,
         print(f"  F1-score   : {cm['f1']:.4f}")
         print(f"  FPR        : {cm['fpr']:.6f}  ({cm['FP']}/{cm['FP']+cm['TN']})")
         print(f"  FNR        : {1-cm['recall']:.4f}  ({cm['FN']}/{cm['TP']+cm['FN']})")
+        if "pre_attack_baseline" in cm:
+            pb = cm["pre_attack_baseline"]
+            print(f"\n  FPR (baseline pré-ataque, benigno limpo): {pb['fpr']:.6f}  "
+                  f"({pb['fp_secs']}/{pb['benign_secs']} s)  ← métrica de FPR confiável")
+            print(f"  [FPR global acima inclui rastro de flood pós-ataque — não representativo]")
 
         if "per_attack_window" in cm:
             print(f"\n  ── Per-window detection rate ──")
@@ -524,10 +587,12 @@ def main():
     ap.add_argument("--label-map", nargs="*", default=[],
                     metavar="FROM=TO",
                     help="Merge ground-truth labels before scoring, e.g. --label-map ddos=dos")
-    ap.add_argument("--p-idle", type=float, default=2.0,
-                    help="Idle power in watts for the linear CPU power model (default: 2.0)")
-    ap.add_argument("--p-max", type=float, default=11.0,
-                    help="Max-load power in watts for the linear CPU power model (default: 11.0)")
+    ap.add_argument("--p-idle", type=float, default=None,
+                    help="Override do P_idle (W); por padrão vem do power_model_vim4.json")
+    ap.add_argument("--p-max", type=float, default=None,
+                    help="Override do P_max (W); por padrão vem do power_model_vim4.json")
+    ap.add_argument("--power-model", default=None,
+                    help="Caminho do power_model_vim4.json (padrão: constants/power_model_vim4.json)")
     args = ap.parse_args()
 
     label_map = {}
@@ -539,6 +604,13 @@ def main():
     windows = parse_orchestrator(args.report, args.tz_offset, args.idle_slack,
                                  label_map=label_map)
     attack_classes = build_attack_classes(label_map)
+
+    # Recursos (CPU/RAM) + span da sessão a partir dos SYS_SNAPSHOT — não dependem
+    # do bloco [SUMMARY] (que pode faltar se o IDS for encerrado à força).
+    snap_full = sorted(parse_snapshot_resources(args.ids))
+    snap_secs = [s[0] for s in snap_full]
+    resources = resource_summary(snap_full)
+    attack_secs_total = windows_attack_seconds(windows)
 
     summary = {}
 
@@ -581,6 +653,13 @@ def main():
             "p1_confidence": p1_stats,
             "p2_confidence": p2_stats,
             "threshold_sweep": td,
+            "resources": resources,
+            "throughput": {
+                "alerts_in_windows": metrics["__total__"],
+                "attack_seconds": attack_secs_total,
+                "alerts_per_s": round(metrics["__total__"] / attack_secs_total, 2)
+                if attack_secs_total else 0.0,
+            },
         }
 
     # ── BINARY ────────────────────────────────────────────────────────────────
@@ -607,18 +686,27 @@ def main():
         # ── Per-second confusion matrix ────────────────────────────────────────
         log_start = min(t for t,_,_ in all_parsed)
         log_end   = max(t for t,_,_ in all_parsed)
-        # windows include all attack types; attack_start/end is the full session span
-        all_w_starts = [s for _,s,_ in windows]
-        all_w_ends   = [e for _,_,e in windows]
-        attack_start = min(all_w_starts)
-        attack_end   = max(all_w_ends)
+        # Estende o span para cobrir TODA a sessão do IDS (via SYS_SNAPSHOT), não
+        # só do 1º ao último alerta — assim o baseline benigno limpo (sem alertas)
+        # conta como TN e o FPR fica correto, em vez de medir só o rastro de flood.
+        if snap_secs:
+            log_start = min(log_start, min(snap_secs))
+            log_end   = max(log_end, max(snap_secs))
+        # Um segundo é "ataque" se cai DENTRO de alguma janela (já estendida pelo
+        # idle_slack), não no span global — assim os intervalos ociosos (gaps)
+        # entre ataques contam como benignos, não como ataque-esperado.
+        attack_secs_set = set()
+        for _, ws, we in windows:
+            attack_secs_set.update(range(ws, we + 1))
+        attack_start = min(s for _, s, _ in windows)
+        attack_end   = max(e for _, _, e in windows)
 
         alerted_secs = set(t for t,_,_ in all_parsed)
 
         psCM = {"TP": 0, "FP": 0, "FN": 0, "TN": 0}
         per_attack_secs = defaultdict(lambda: {"total": 0, "alerted": 0})
         for sec in range(log_start, log_end + 1):
-            is_atk = (attack_start <= sec <= attack_end)
+            is_atk = (sec in attack_secs_set)
             alerted = (sec in alerted_secs)
             if is_atk and alerted:      psCM["TP"] += 1
             elif is_atk and not alerted: psCM["FN"] += 1
@@ -630,6 +718,18 @@ def main():
                     per_attack_secs[label]["total"] += 1
                     if alerted:
                         per_attack_secs[label]["alerted"] += 1
+
+        # FPR medido SÓ no baseline PRÉ-ataque (benigno limpo). O baseline
+        # pós-ataque é contaminado por drenagem/lag de flood (o IDS satura sob
+        # flood e emite fluxos atrasados), então não serve para medir FPR.
+        pre_start, pre_end = log_start, attack_start - 1
+        pre_secs = max(0, pre_end - pre_start + 1)
+        pre_fp = sum(1 for s in range(pre_start, pre_end + 1) if s in alerted_secs) if pre_secs else 0
+        pre_baseline = {
+            "benign_secs": pre_secs,
+            "fp_secs": pre_fp,
+            "fpr": round(pre_fp / pre_secs, 6) if pre_secs else 0.0,
+        }
 
         tp_s, fp_s, fn_s, tn_s = psCM["TP"], psCM["FP"], psCM["FN"], psCM["TN"]
         total_s = tp_s + fp_s + fn_s + tn_s
@@ -647,7 +747,8 @@ def main():
                 label: {"total_secs": v["total"], "alerted_secs": v["alerted"],
                         "detection_rate": round(v["alerted"]/v["total"], 4) if v["total"] > 0 else 0}
                 for label, v in per_attack_secs.items()
-            }
+            },
+            "pre_attack_baseline": pre_baseline,
         }
 
         print_binary_report(per_window_stats, global_stats, td, outside, label_map,
@@ -674,23 +775,64 @@ def main():
             "p1_confidence_global": global_stats,
             "threshold_sweep": td,
             "precision_curve": pc,
+            "resources": resources,
+            "throughput": {
+                "alerts_in_windows": len(all_tp),
+                "attack_seconds": attack_secs_total,
+                "alerts_per_s": round(len(all_tp) / attack_secs_total, 2)
+                if attack_secs_total else 0.0,
+            },
         }
 
+    power_model = load_power_model(args.power_model)
+    # CLI sobrepõe o modelo só se o usuário passou valores explícitos.
+    if args.p_idle is not None:
+        power_model["p_idle_w"] = args.p_idle
+    if args.p_max is not None:
+        power_model["p_max_w"] = args.p_max
+    p_idle = power_model["p_idle_w"]
+    p_max = power_model["p_max_w"]
+
     samples = sorted(parse_snapshot_log(args.ids))
-    energy = compute_session_energy(samples, windows, args.p_idle, args.p_max)
+    energy = compute_session_energy(samples, windows, p_idle, p_max)
+    band = energy_band(samples, windows, power_model) if energy else {}
     summary_block = parse_summary_block(args.ids)
     inference_energy = (
-        compute_inference_energy(summary_block, energy["total_energy_j"], args.p_idle, args.p_max)
+        compute_inference_energy(summary_block, energy["total_energy_j"], p_idle, p_max)
         if energy else {}
     )
-    print_energy_report(energy, inference_energy, args.p_idle, args.p_max)
+    print_energy_report(energy, inference_energy, p_idle, p_max)
+    if band:
+        lo = band["low"]["total_energy_j"]
+        hi = band["high"]["total_energy_j"]
+        print(f"  Banda de sensibilidade   : {lo:.1f}–{hi:.1f} J "
+              f"(P_idle {power_model['sensitivity']['p_idle_low']}–{power_model['sensitivity']['p_idle_high']} W, "
+              f"P_max {power_model['sensitivity']['p_max_low']}–{power_model['sensitivity']['p_max_high']} W)")
+        print(f"  [estimativa — sem medição direta; ver power_model_vim4.json]")
     if energy:
         summary["energy"] = {
-            "p_idle_w": args.p_idle,
-            "p_max_w": args.p_max,
+            "model": power_model,
+            "p_idle_w": p_idle,
+            "p_max_w": p_max,
             "session": energy,
+            "band": band or None,
             "inference": inference_energy or None,
         }
+
+    # ── Recursos (derivados dos SYS_SNAPSHOT, sem depender de [SUMMARY]) ────────
+    print("\n╔══════════════════════════════════════════════════════════╗")
+    print("║   RECURSOS (CPU/RAM) E THROUGHPUT                       ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+    if resources:
+        print(f"\n  Amostras SYS_SNAPSHOT     : {resources['samples']}")
+        print(f"  CPU média / máxima        : {resources['cpu_avg_pct']:.1f}% / {resources['cpu_max_pct']:.1f}%")
+        print(f"  RAM média / máxima        : {resources['ram_avg_mb']:.0f} MB / {resources['ram_max_mb']} MB")
+    else:
+        print("\n  [sem SYS_SNAPSHOT no log]")
+    thr = summary.get("throughput", {})
+    if thr:
+        print(f"  Alertas em ataque         : {thr['alerts_in_windows']:,} em {thr['attack_seconds']}s "
+              f"({thr['alerts_per_s']} alertas/s)")
 
     if args.output:
         with open(args.output, "w") as f:
