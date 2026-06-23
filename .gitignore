@@ -9,3 +9,6 @@ notes.txt
 models/umap_reducer_*.pkl
 artigo-TCC.docx
 netflower_README.md
+docs/superpowers
+logs/
+__pycache__/
