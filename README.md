@@ -74,8 +74,8 @@ Real-time IDS and the live-validation toolchain (run on the VIM 4 edge node and 
 - **`scripts/run_experiment.sh`** — **One-command live validation.** Runs on the PC and orchestrates the whole experiment over SSH: deploys scripts/models to the VIM 4, brings up an HTTP service, runs Session A (binary IDS) and Session B (binary+multiclass IDS) under an identical attack script with idle baselines and inter-attack gaps, tears everything down, and computes the metrics. No secrets in the file (sudo password read from `$VIM4_PASS`).
 - **`scripts/network_binary_ids.py`** — Real-time **Phase 1** IDS for VIM 4. Captures live flows via `netflower`'s `capture_live` (emitting each flow on TCP FIN/RST or idle timeout) and runs the binary classifier to flag attack traffic. Logs per-flow alerts and periodic system snapshots (CPU/RAM/net/power/temp/DVFS).
 - **`scripts/network_ids.py`** — Real-time **Phase 1+2** IDS: same capture path, plus the multiclass classifier to label the attack type for flagged flows.
-- **`scripts/attack_orchestrator.py`** — Generates the eight attack categories (recon, dos, ddos, brute-force, web, mitm, spoofing, malware) against the target, with configurable per-attack duration and idle `--gap`, and writes a JSON report with per-attack time windows (the ground truth for scoring).
-- **`scripts/ids_metrics.py`** — Computes detection metrics (binary per-second confusion matrix; multiclass per-class TP/FP/FN/F1), resource usage (CPU/RAM/throughput), and a **calibrated energy estimate with an uncertainty band**, all from the IDS log + orchestrator report.
+- **`scripts/attack_generator.py`** — Generates the eight attack categories (recon, dos, ddos, brute-force, web, mitm, spoofing, malware) against the target, with configurable per-attack duration and idle `--gap`, and writes a JSON report with per-attack time windows (the ground truth for scoring).
+- **`scripts/ids_metrics.py`** — Computes detection metrics (binary per-second confusion matrix; multiclass per-class TP/FP/FN/F1), resource usage (CPU/RAM/throughput), and a **calibrated energy estimate with an uncertainty band**, all from the IDS log + attack-generator report.
 - **`scripts/calibrate_power.py`** — Calibrates the energy model on the VIM 4 (idle vs. `stress` benchmark + literature-anchored power envelope), writing `constants/power_model_vim4.json`. The board exposes no power sensor, so energy is an estimate, not a direct measurement.
 - **`scripts/benign_trafic_simulator.sh`**, **`scripts/trafic_capturer.sh`**, **`scripts/evaluate_ids.py`** — earlier helpers for benign-traffic generation, capture, and CSV-based evaluation.
 
@@ -87,7 +87,7 @@ Real-time IDS and the live-validation toolchain (run on the VIM 4 edge node and 
 
 ### `tests/`
 
-- Lightweight standalone tests (`python3 tests/test_*.py`, no pytest needed) for the power model, energy band, calibration, and attack-orchestrator command builders.
+- Lightweight standalone tests (`python3 tests/test_*.py`, no pytest needed) for the power model, energy band, calibration, and attack-generator command builders.
 
 ---
 

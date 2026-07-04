@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-attack_orchestrator.py — Run and quantify multiple IDS-validation attacks.
+attack_generator.py — Run and quantify multiple IDS-validation attacks.
 
 Executes attack modules against a target, captures traffic with tcpdump,
 analyzes each pcap with tshark/capinfos, and produces a timestamped report
 (JSON + CSV) with per-attack flow/packet/byte metrics ready for labeling.
 
 Usage:
-    sudo python3 scripts/attack_orchestrator.py [options]
+    sudo python3 scripts/attack_generator.py [options]
 
 Options:
     --target   IP           Target (default: 192.168.100.5)
@@ -88,7 +88,7 @@ class AttackStats:
 
 def require_root() -> None:
     if os.geteuid() != 0:
-        sys.exit("[!] Run as root: sudo python3 scripts/attack_orchestrator.py")
+        sys.exit("[!] Run as root: sudo python3 scripts/attack_generator.py")
 
 
 def tool_available(name: str) -> bool:
@@ -548,7 +548,7 @@ def print_summary(results: List[AttackStats]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="IDS validation attack orchestrator"
+        description="IDS validation attack generator"
     )
     parser.add_argument("--target",       default=DEFAULT_TARGET)
     parser.add_argument("--iface",        default=DEFAULT_IFACE)
