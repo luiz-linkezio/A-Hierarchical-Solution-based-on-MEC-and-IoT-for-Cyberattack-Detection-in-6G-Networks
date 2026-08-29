@@ -1,7 +1,7 @@
 # Revalidação ao vivo do IDS hierárquico no VIM 4 — 2026-06-19
 
 Registro de metodologia e resultados da revalidação ao vivo da Seção 4 do artigo
-(`docs/artigo.tex`), refeita por completo com os modelos já treinados
+(`docs/artigo/main.tex`), refeita por completo com os modelos já treinados
 (`models/*_20260601_001154.pkl`, **sem retreino**). Objetivos: (i) cobrir as **8
 classes** de ataque no multiclasse; (ii) medir energia de forma mais séria.
 

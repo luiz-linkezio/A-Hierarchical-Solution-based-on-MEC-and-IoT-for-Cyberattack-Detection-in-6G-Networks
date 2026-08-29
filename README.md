@@ -6,7 +6,7 @@ IoT deployments are heterogeneous and resource-limited, while many high-accuracy
 
 This repository holds the **data pipeline**, **exploratory analysis**, and **modeling notebooks** used in that line of work (public CIC IoT/IIoT-style datasets, SQLite storage, flow features from PCAPs via **[netflower](https://pypi.org/project/netflower/)**, and gradient-boosting experiments with interpretability and exploratory clustering tools).
 
-See **[`docs/project_overview.md`](docs/project_overview.md)** for a full description of the architecture, design decisions, and current status.
+See **[`docs/`](docs/README.md)** for the paper source, the experiment write-ups, and the training/session reports.
 
 ---
 
@@ -37,7 +37,7 @@ Phase 3 (clustering / zero-day) is future work.
 - **`requirements.txt`** — Pinned Python packages for the Jupyter workflow (e.g., pandas, NumPy, matplotlib, seaborn, ipykernel). Does **not** list everything `training.ipynb` imports; install extras such as `lightgbm`, `xgboost`, `optuna`, `shap`, `umap-learn`, `hdbscan`, and `scikit-learn` when you run that notebook.
 - **`links.txt`** — Curated links: shared storage (e.g., Google Drive), conference pages, and **official dataset download URLs** (CIC IoT Dataset 2023 and CIC IIoT 2025). Use it to fetch raw data that is too large for Git.
 - **`LICENSE`** — Terms under which this repository’s materials may be used or redistributed.
-- **`.gitignore`** — Keeps `venv/`, local **`data/`**, SQLite **`*.db`**, and **`*.log`** out of commits so binaries, secrets, and huge artifacts never enter history.
+- **`.gitignore`** — Keeps `venv/`, local **`data/`**, SQLite **`*.db`**, **`*.log`**, and LaTeX build output (`docs/artigo/build/`, `*.aux`, …) out of commits so binaries, secrets, and huge artifacts never enter history.
 - **`.gitmodules`** — When present, records each **Git submodule** (path + upstream URL). New vendored dependencies should be added here so `git clone --recurse-submodules` stays sufficient as the repository grows.
 
 ### `notebooks/`
@@ -88,6 +88,16 @@ Real-time IDS and the live-validation toolchain (run on the VIM 4 edge node and 
 ### `tests/`
 
 - Lightweight standalone tests (`python3 tests/test_*.py`, no pytest needed) for the power model, energy band, calibration, and attack-generator command builders.
+
+### `docs/`
+
+Paper source, experiment write-ups, and generated reports — see **[`docs/README.md`](docs/README.md)** for the full map.
+
+- **`docs/artigo/`** — LaTeX source of the paper (`main.tex`, `artigo.bib`, SBC template files). Compile with `docs/artigo/build.sh`; output goes to the git-ignored `docs/artigo/build/`.
+- **`docs/experimentos/`** — methodology and results of each live testbed session on the VIM 4.
+- **`docs/results/`** — reports written by `training.ipynb` and IDS session reports, with their figures.
+- **`docs/dataset/`** — final feature list and label taxonomy used for training.
+- **`docs/testbed/`** — manual command reference for reproducing each attack class against the VIM 4.
 
 ---
 
