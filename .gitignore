@@ -14,3 +14,18 @@ logs/
 __pycache__/
 models/multiclass_classifier_20260601_001154.pkl
 Template_SBC
+
+# LaTeX build output (docs/artigo) — compile with docs/artigo/build.sh into build/
+docs/artigo/build/
+docs/artigo/*.pdf
+docs/artigo/*.out
+*.aux
+*.bbl
+*.blg
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.dvi
