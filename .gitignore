@@ -13,3 +13,4 @@ docs/superpowers
 logs/
 __pycache__/
 models/multiclass_classifier_20260601_001154.pkl
+Template_SBC

@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-import attack_orchestrator as ao
+import attack_generator as ao
 
 
 def _attacks():

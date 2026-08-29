@@ -6,7 +6,7 @@ Supports two log types:
   multiclass  — network_ids.py output (Phase 1 + Phase 2, two confidence columns)
   binary      — network_binary_ids.py output (Phase 1 only)
 
-Ground truth windows come from an attack_orchestrator JSON report.
+Ground truth windows come from an attack_generator JSON report.
 PC timestamps in the JSON are assumed to be in BRT (UTC-3) by default;
 pass --tz-offset to adjust.
 

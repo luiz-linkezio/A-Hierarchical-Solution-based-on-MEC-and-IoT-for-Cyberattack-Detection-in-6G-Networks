@@ -146,7 +146,7 @@ run_session() {
   fi
   echo "baseline idle ${BASELINE}s..."; [ "$DRYRUN" = 0 ] && sleep "$BASELINE"
   local capflag=""; [ "$CAPTURE" = 1 ] && capflag="--capture"
-  run "sudo VIM4_PASS=\"$VIM4_PASS\" python3 -u \"$ROOT/scripts/attack_orchestrator.py\" \
+  run "sudo VIM4_PASS=\"$VIM4_PASS\" python3 -u \"$ROOT/scripts/attack_generator.py\" \
         --target ${TARGET} --iface ${IFACE_PC} --duration ${DURATION} --gap ${GAP} --gateway ${GATEWAY} \
         --vim-ssh \"ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${VIM_USER}@${TARGET}\" \
         --output \"$ROOT/${outdir}/\" ${capflag}"

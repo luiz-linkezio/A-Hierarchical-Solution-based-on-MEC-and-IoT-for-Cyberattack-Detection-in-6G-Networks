@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-evaluate_ids.py — Cross-correlate attack orchestrator ground truth with IDS alerts.
+evaluate_ids.py — Cross-correlate attack generator ground truth with IDS alerts.
 
 Usage:
     python3 scripts/evaluate_ids.py \
