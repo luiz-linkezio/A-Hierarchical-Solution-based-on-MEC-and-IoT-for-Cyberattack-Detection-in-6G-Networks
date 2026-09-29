@@ -204,6 +204,34 @@ def _report_append(text: str) -> None:
             _f.write(text)
 
 
+def _append_flow_row(flow: dict, verdict_fields: list[str]) -> None:
+    """Grava a linha TSV de um fluxo (ATTACK ou BENIGN) na seção [FLOWS].
+    flow['timestamp'] é a captura do 1º pacote (netflower) — é ela, e não a hora
+    de emissão, que a métrica usa para atribuir o fluxo à janela de ataque."""
+    flow_ts = flow.get("timestamp")
+    flow_ts_str = f"{float(flow_ts):.6f}" if flow_ts is not None else ""
+    cols_tsv = "\t".join(
+        str(flow.get(c, "")) if not isinstance(flow.get(c), float)
+        else f"{flow.get(c):.4g}"
+        for c in _ALERT_COLS
+    )
+    with _stats_lock:
+        _snap = dict(_last_sys_m)
+    sys_tsv = "\t".join([
+        f"{_snap['cpu_pct']:.1f}"              if "cpu_pct"  in _snap else "",
+        f"{_snap['ram_mb']:.0f}"               if "ram_mb"   in _snap else "",
+        f"{_snap['recv_bs'] / 1024:.2f}"       if "recv_bs"  in _snap else "",
+        f"{_snap.get('sent_bs', 0) / 1024:.2f}" if "recv_bs" in _snap else "",
+        f"{_snap['power_w']:.2f}"              if "power_w"  in _snap else "",
+    ])
+    _report_append(
+        f"{datetime.datetime.now().strftime('%H:%M:%S')}\t"
+        f"{flow_ts_str}\t"
+        + "\t".join(verdict_fields)
+        + f"\t{cols_tsv}\t{sys_tsv}\n"
+    )
+
+
 def _init_report(model, input_features: list[str], attack_idx: int,
                  model_p2, p2_input_features: list[str]) -> None:
     global _report_path, _run_start
@@ -228,8 +256,11 @@ def _init_report(model, input_features: list[str], attack_idx: int,
         f"p1_input_features    = {len(input_features)}\n"
         f"p2_classes           = {list(model_p2.classes_)}\n"
         f"p2_input_features    = {len(p2_input_features)}\n\n"
-        f"[ALERTS]\n"
-        f"# timestamp\tp1_conf\tp2_label\tp2_conf\t"
+        f"[FLOWS]\n"
+        f"# timestamp = hora de emissão (VIM, HH:MM:SS); flow_ts = captura do 1º pacote\n"
+        f"# (epoch, s) — base da métrica, imune ao atraso de processamento/timeout.\n"
+        f"# Uma linha por fluxo: verdict ATTACK (p1 >= threshold) ou BENIGN (sem P2: '-').\n"
+        f"# timestamp\tflow_ts\tverdict\tp1_conf\tp2_label\tp2_conf\tp2_low_conf\t"
         + "\t".join(_ALERT_COLS)
         + "\tcpu_pct\tram_mb\tnet_recv_kbs\tnet_sent_kbs\tpower_w\n"
     )
@@ -465,7 +496,9 @@ def make_flow_handler(model, input_features: list[str], attack_idx: int,
                     _stats["max_inference_ms"] = p1_ms
 
             if prob < THRESHOLD:
-                return  # benign — nothing more to do
+                # Benigno também vai para o log: sem ele não há FN/TN por fluxo.
+                _append_flow_row(flow, ["BENIGN", f"{prob:.3%}", "-", "-", "-"])
+                return
 
             # ------------------------------------------------------------------
             # Phase 2 — Multi-class: attack type classification
@@ -514,28 +547,9 @@ def make_flow_handler(model, input_features: list[str], attack_idx: int,
                     prob * 100, p2_label_display, p2_conf * 100, p1_ms, p2_ms,
                 )
 
-            cols_tsv = "\t".join(
-                str(row.get(c, "")) if not isinstance(row.get(c), float)
-                else f"{row.get(c):.4g}"
-                for c in _ALERT_COLS
-            )
-            with _stats_lock:
-                _snap = dict(_last_sys_m)
-            sys_tsv = "\t".join([
-                f"{_snap['cpu_pct']:.1f}"              if "cpu_pct"  in _snap else "",
-                f"{_snap['ram_mb']:.0f}"               if "ram_mb"   in _snap else "",
-                f"{_snap['recv_bs'] / 1024:.2f}"       if "recv_bs"  in _snap else "",
-                f"{_snap.get('sent_bs', 0) / 1024:.2f}" if "recv_bs" in _snap else "",
-                f"{_snap['power_w']:.2f}"              if "power_w"  in _snap else "",
+            _append_flow_row(flow, [
+                "ATTACK", f"{prob:.3%}", p2_label, f"{p2_conf:.1%}", str(int(low_conf)),
             ])
-            _report_append(
-                f"{datetime.datetime.now().strftime('%H:%M:%S')}\t"
-                f"{prob:.1%}\t"
-                f"{p2_label_display}\t"
-                f"{p2_conf:.1%}\t"
-                f"{cols_tsv}\t"
-                f"{sys_tsv}\n"
-            )
 
         except Exception as e:
             log.error("Inference failed on flow: %s", e)

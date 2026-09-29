@@ -15,7 +15,7 @@ Plano: `docs/superpowers/plans/2026-06-19-vim4-multiclass-energy-revalidation.md
 No **PC atacante**, na raiz do projeto:
 
 ```bash
-export VIM4_PASS=khadas          # senha de sudo da VIM 4 (NUNCA versionar)
+export VIM4_PASS=<senha sudo da VIM 4>   # NUNCA versionar; lida do ambiente
 ./scripts/run_experiment.sh --skip-calibration \
   2>&1 | tee logs/run_experiment_$(date +%Y%m%d_%H%M%S).log
 ```

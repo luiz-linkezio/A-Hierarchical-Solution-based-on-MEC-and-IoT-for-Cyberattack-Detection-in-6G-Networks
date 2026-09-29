@@ -18,8 +18,10 @@ GATEWAY=192.168.100.1
 IFACE_PC=eno1
 DURATION=60
 BASELINE=60
-GAP=120          # ocioso entre ataques: drena o lag de flood (~80s) antes da próxima janela
-SLACK=90         # idle_slack da análise: absorve o dreno do flood na janela do próprio flood
+GAP=120          # ocioso entre ataques: separa a carga de CPU (energia) de ataques vizinhos
+SLACK=90         # idle_slack SÓ da divisão de energia ataque×ocioso (a detecção é por flow_ts)
+CLOCK_OFFSET=0   # relógio da VIM − relógio do PC (s), medido na pré-checagem
+ATTACKER_IPS=""  # IPs do PC na LAN do alvo, detectados na pré-checagem
 SKIP_CALIB=0
 CAPTURE=0
 DRYRUN=0
@@ -105,6 +107,22 @@ say "PRÉ-CHECAGEM"
 if [ "$DRYRUN" = 0 ]; then
   $SSH "echo VIM4_OK" | grep -q VIM4_OK
   vsudo "whoami" | grep -q root
+  # A métrica compara o flow_ts (relógio da VIM) com as janelas (relógio do PC):
+  # mede o offset (menor RTT de 5 amostras) e confere que a VIM está em UTC
+  # (o log de emissão/SYS_SNAPSHOT usa a hora local da VIM).
+  CLOCK_OFFSET=$(for _ in 1 2 3 4 5; do
+      t0=$(date +%s.%N); tv=$($SSH "date +%s.%N"); t1=$(date +%s.%N)
+      echo "$t0 $tv $t1"
+    done | awk '{rtt=$3-$1; off=$2-($1+$3)/2; if (NR==1 || rtt<best) {best=rtt; o=off}}
+                END {printf "%.3f", o}')
+  echo "offset de relógio VIM−PC: ${CLOCK_OFFSET}s"
+  # IPs do PC na LAN do alvo (eno1 e, se houver, wlan0): a análise usa para
+  # separar tráfego de ataque de tráfego de fundo de outros hosts da rede.
+  ATTACKER_IPS=$(ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1 \
+                 | grep "^${TARGET%.*}\." | paste -sd, -)
+  echo "IPs do atacante na LAN: ${ATTACKER_IPS}"
+  VIM_TZ=$($SSH "date +%z")
+  [ "$VIM_TZ" = "+0000" ] || { echo "[!] VIM 4 fora de UTC (${VIM_TZ}); a análise assume UTC"; exit 1; }
 fi
 for t in nmap masscan hping3 medusa nikto gobuster curl arpspoof nc; do
   command -v "$t" >/dev/null || { echo "[!] faltando no PC: $t"; exit 1; }
@@ -177,7 +195,7 @@ else
   B_LOG=$(ls -t "$ROOT/${DIR_B}"/ids_run_*.log | head -1)
   B_REP=$(ls -t "$ROOT/${DIR_B}"/report_*.json | head -1)
 fi
-run "python3 \"$ROOT/scripts/ids_metrics.py\" --ids \"$A_LOG\" --report \"$A_REP\" --mode binary --label-map ddos=dos --idle-slack ${SLACK} --output \"$ROOT/results/session_a_metrics_${TS}.json\""
-run "python3 \"$ROOT/scripts/ids_metrics.py\" --ids \"$B_LOG\" --report \"$B_REP\" --mode multiclass --label-map ddos=dos --idle-slack ${SLACK} --output \"$ROOT/results/session_b_metrics_${TS}.json\""
+run "python3 \"$ROOT/scripts/ids_metrics.py\" --ids \"$A_LOG\" --report \"$A_REP\" --mode binary --label-map ddos=dos --idle-slack ${SLACK} --clock-offset ${CLOCK_OFFSET} --target-ip ${TARGET} --attacker-ips \"${ATTACKER_IPS}\" --output \"$ROOT/results/session_a_metrics_${TS}.json\""
+run "python3 \"$ROOT/scripts/ids_metrics.py\" --ids \"$B_LOG\" --report \"$B_REP\" --mode multiclass --label-map ddos=dos --idle-slack ${SLACK} --clock-offset ${CLOCK_OFFSET} --target-ip ${TARGET} --attacker-ips \"${ATTACKER_IPS}\" --output \"$ROOT/results/session_b_metrics_${TS}.json\""
 
 say "FEITO — resultados em results/session_{a,b}_metrics_${TS}.json"

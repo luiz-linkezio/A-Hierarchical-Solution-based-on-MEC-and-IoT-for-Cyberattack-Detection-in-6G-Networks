@@ -72,10 +72,10 @@ Because **`.gitignore`** excludes `data/`, each clone must populate this tree lo
 Real-time IDS and the live-validation toolchain (run on the VIM 4 edge node and on the attacker PC):
 
 - **`scripts/run_experiment.sh`** — **One-command live validation.** Runs on the PC and orchestrates the whole experiment over SSH: deploys scripts/models to the VIM 4, brings up an HTTP service, runs Session A (binary IDS) and Session B (binary+multiclass IDS) under an identical attack script with idle baselines and inter-attack gaps, tears everything down, and computes the metrics. No secrets in the file (sudo password read from `$VIM4_PASS`).
-- **`scripts/network_binary_ids.py`** — Real-time **Phase 1** IDS for VIM 4. Captures live flows via `netflower`'s `capture_live` (emitting each flow on TCP FIN/RST or idle timeout) and runs the binary classifier to flag attack traffic. Logs per-flow alerts and periodic system snapshots (CPU/RAM/net/power/temp/DVFS).
-- **`scripts/network_ids.py`** — Real-time **Phase 1+2** IDS: same capture path, plus the multiclass classifier to label the attack type for flagged flows.
+- **`scripts/network_binary_ids.py`** — Real-time **Phase 1** IDS for VIM 4. Captures live flows via `netflower`'s `capture_live` (emitting each flow on TCP FIN/RST or idle timeout) and runs the binary classifier to flag attack traffic. Logs **every** classified flow (verdict ATTACK or BENIGN, with P1 and the flow's own capture timestamp `flow_ts`) and periodic system snapshots (CPU/RAM/net/power/temp/DVFS).
+- **`scripts/network_ids.py`** — Real-time **Phase 1+2** IDS: same capture path, plus the multiclass classifier to label the attack type for flagged flows. Same per-flow log format, with the Phase 2 label/confidence on ATTACK rows.
 - **`scripts/attack_generator.py`** — Generates the eight attack categories (recon, dos, ddos, brute-force, web, mitm, spoofing, malware) against the target, with configurable per-attack duration and idle `--gap`, and writes a JSON report with per-attack time windows (the ground truth for scoring).
-- **`scripts/ids_metrics.py`** — Computes detection metrics (binary per-second confusion matrix; multiclass per-class TP/FP/FN/F1), resource usage (CPU/RAM/throughput), and a **calibrated energy estimate with an uncertainty band**, all from the IDS log + attack-generator report.
+- **`scripts/ids_metrics.py`** — Computes **per-flow** detection metrics (binary 2×2 confusion matrix, per-attack recall, P1 threshold sweep; hierarchical multiclass per-class P/R/F1 and confusion matrix). Each flow is labelled by the attack window in which it *started* (`flow_ts`), not by when the IDS emitted it, so the emission lag of a saturated VIM 4 under flood cannot leak flows into other windows. Since the lab LAN is not isolated, an endpoint filter (`--target-ip`/`--attacker-ips`, filled in by `run_experiment.sh`) keeps background flows that start inside a window — multicast, other LAN hosts, the VIM's own NTP/apt — out of the attack class. Also reports resource usage (CPU/RAM/throughput), and a **calibrated energy estimate with an uncertainty band**, all from the IDS log + attack-generator report.
 - **`scripts/calibrate_power.py`** — Calibrates the energy model on the VIM 4 (idle vs. `stress` benchmark + literature-anchored power envelope), writing `constants/power_model_vim4.json`. The board exposes no power sensor, so energy is an estimate, not a direct measurement.
 - **`scripts/benign_trafic_simulator.sh`**, **`scripts/trafic_capturer.sh`**, **`scripts/evaluate_ids.py`** — earlier helpers for benign-traffic generation, capture, and CSV-based evaluation.
 
@@ -137,12 +137,28 @@ then writes `results/session_{a,b}_metrics_<ts>.json`. Drop `--skip-calibration`
 to (re)calibrate the energy model first. Login to the VIM 4 uses an SSH key; the
 sudo password is only read from `$VIM4_PASS` and never stored in the repo.
 
+Detection is scored **per flow**: each classified flow is labelled by the attack
+window in which it *started* (`flow_ts`, the pcap capture time of its first
+packet), never by when the alert was emitted. This is deliberate — under flood
+the ARM node saturates and emits flows with a median delay of 163–216 s, so any
+emission-time or per-second metric leaks alerts into neighbouring windows.
+`ids_metrics.py` reports both strict ground-truth windows and a `+2 s`
+calibration (`--window-guard 2`) that corrects the orchestrator's start-logging
+lag; labelling stays on `flow_ts` either way.
+
 Full methodology, artifact descriptions, results, and the issues found during
 execution are documented in
-**[`docs/experimentos/2026-06-19-vim4-revalidacao.md`](docs/experimentos/2026-06-19-vim4-revalidacao.md)**.
+**[`docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md`](docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md)**
+(the earlier per-second run is kept for history in
+[`docs/experimentos/2026-06-19-vim4-revalidacao.md`](docs/experimentos/2026-06-19-vim4-revalidacao.md)).
 
-Headline results (run `20260619_230219`): binary IDS with **0 % false positives**
-on a clean benign baseline; multiclass classifies *recon* at **F1 = 0.976** while
-the remaining categories largely collapse onto *dos* in the 55 per-flow features
-(a feature-space limitation); Phase 2 adds only **+50 MB RAM** over the binary
-pipeline, with no CPU or energy overhead.
+Headline results (run `20260929_144008`, calibrated windows): the binary IDS
+reaches **per-flow precision ≈ 0.99** (recall ≈ 0.81, F1 ≈ 0.89) with near-instant
+detection (0–6 s), strongest on volumetric floods (*spoofing* recall 1.00, *DoS*
+0.84–0.95); low-volume attacks (brute force, MITM, web) produced too few flows to
+be detected. The multiclass IDS classifies *recon* at **F1 = 0.861** while the
+remaining categories collapse onto *dos* in the 55 per-flow features (macro-F1 =
+0.27, a feature-space limitation); Phase 2 adds only **+53 MB RAM** over the
+binary pipeline, with no CPU or energy overhead. The raw false-positive rate is
+not a reliable specificity measure here — the capture is ~99 % flood, so genuine
+benign traffic is a few hundred flows and precision is the trustworthy metric.

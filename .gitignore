@@ -29,3 +29,6 @@ docs/artigo/*.out
 *.fdb_latexmk
 *.synctex.gz
 *.dvi
+
+# LaTeX build output (docs/relatorio_ic) — compile with docs/relatorio_ic/build.sh into build/
+docs/relatorio_ic/build/

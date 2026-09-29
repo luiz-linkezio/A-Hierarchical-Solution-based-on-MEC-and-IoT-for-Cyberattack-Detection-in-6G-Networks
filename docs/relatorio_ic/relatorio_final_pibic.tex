@@ -1,17 +1,72 @@
-\documentclass[12pt]{article}
+% ============================================================================
+% RELATÓRIO FINAL DE ATIVIDADES — PIBIC/UFPE, edição 2025-2026
+%
+% Segue o modelo "Relatório final de atividades do estudante bolsista e
+% voluntário dos programas PIBIC, PIBIC-AF, PIBITI e PIBIC-EM/CNPq - UFPE"
+% publicado pela Propesqi em www.ufpe.br/iniciacao-cientifica (modelo mais
+% recente disponível, 2022-23): Times New Roman 12, espaçamento simples,
+% páginas numeradas, seções 1 a 11 na ordem do modelo, resumo com no máximo
+% 200 palavras, introdução com no máximo 3 páginas, resultados com no máximo
+% 8 páginas, documento com no máximo 25 páginas e 3 MB, enviado em PDF.
+%
+% Compilar:  docs/relatorio_ic/build.sh   (-> build/relatorio_final_pibic.pdf)
+%
+% Campos de identificação já confirmados. O comando \pendente{...} (destaque em
+% amarelo) fica disponível para marcar qualquer trecho que ainda precise de revisão.
+% ============================================================================
+\documentclass[12pt,a4paper]{article}
 
-\usepackage{sbc-template}
-\usepackage{graphicx,url}
+% --- codificação, idioma e fonte ------------------------------------------
 \usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage[brazil]{babel}
-\usepackage{booktabs}
-\usepackage{multirow}
 \usepackage{amsmath}
-\usepackage{array}
+\usepackage{newtxtext,newtxmath}      % Times New Roman (texto e matemática)
+
+% --- página ----------------------------------------------------------------
+\usepackage[a4paper,margin=2.5cm]{geometry}   % espaçamento simples = padrão do article
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{2pt plus 1pt}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{15pt}
+
+% --- títulos das seções (numeradas como no modelo: "1. IDENTIFICAÇÃO") -----
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalfont\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalfont\bfseries\itshape}{\thesubsubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{11pt plus 3pt minus 2pt}{5pt}
+\titlespacing*{\subsection}{0pt}{8pt plus 2pt minus 1pt}{3pt}
+\titlespacing*{\subsubsection}{0pt}{6pt plus 2pt minus 1pt}{2pt}
+\setcounter{tocdepth}{1}
+\usepackage[titles]{tocloft}            % sumário compacto
+\setlength{\cftbeforesecskip}{2pt}
+\setlength{\cftaftertoctitleskip}{6pt}
+
+% --- figuras, tabelas e listas --------------------------------------------
+\usepackage{graphicx,url}
+\usepackage{booktabs,multirow,array}
+\usepackage{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, fit, backgrounds}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf,labelsep=period}
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep,topsep=2pt,leftmargin=*}
+\setlist[enumerate]{noitemsep,topsep=2pt,leftmargin=*}
+
+% bibliografia como seção numerada, com o título do modelo
+\usepackage[nottoc,numbib]{tocbibind}
+\addto\captionsbrazil{\renewcommand{\refname}{REFERÊNCIAS BIBLIOGRÁFICAS}}
+% menos espaço entre as entradas da bibliografia
+\let\oldthebibliography\thebibliography
+\renewcommand{\thebibliography}[1]{\oldthebibliography{#1}\setlength{\itemsep}{2pt plus 1pt}}
 
 % permite quebra de linha em URLs longas (notas de rodapé com links do GitHub)
 \expandafter\def\expandafter\UrlBreaks\expandafter{\UrlBreaks%
@@ -21,223 +76,159 @@
   \do\N\do\O\do\P\do\Q\do\R\do\S\do\T\do\U\do\V\do\W\do\X\do\Y\do\Z%
   \do\-\do\_}
 
+\usepackage[hidelinks]{hyperref}
+
+% campo ainda não preenchido: destacado em amarelo no PDF
+\newcommand{\pendente}[1]{\colorbox{yellow!55}{\strut #1}}
 
 \sloppy
 
-\title{Uma Solução Hierárquica para Detecção de Ciberataques em Ambientes IoT baseados em Redes MEC 6G }
-
-\author{Luiz Henrique B. A. da Silva, Caio B. B. de Souza\thanks{Co-orientador}, Andson M. Balieiro\thanks{Orientador} }
-
-\address{Curso de Sistemas de Informação\\
-  Centro de Informática (CIn) -- Universidade Federal de Pernambuco (UFPE)\\
-  Caixa Postal 7851 -- 50.740-560 -- Recife -- PE -- Brasil \\
-  \email{lhbas@cin.ufpe.br, amb4@cin.ufpe.br, cbbs@cin.ufpe.br} 
-}
-
 \begin{document}
 
-\maketitle
+% ============================================================================
+% CABEÇALHO (idêntico ao modelo da Propesqi)
+% ============================================================================
+\begin{center}
+\includegraphics[width=5.4cm]{logo_ufpe_propesqi.jpeg}\\[12pt]
+{\bfseries RELATÓRIO FINAL DE ATIVIDADES DO ESTUDANTE\\
+BOLSISTA E VOLUNTÁRIO DOS PROGRAMAS\\
+PIBIC, PIBIC-AF, PIBITI E PIBIC-EM/CNPq -- UFPE}\\[2pt]
+(Refere-se às atividades realizadas no período de setembro de 2025 a agosto de 2026)
+\end{center}
 
-%─────────────────────────────────────────────────────────────────────────────
-\begin{abstract}
-The exponential growth of Internet of Things (IoT) devices and the emergence
-of sixth-generation (6G) networks introduce new cybersecurity challenges in
-Multi-access Edge Computing (MEC) environments. This work proposes and
-implements a two-phase hierarchical Intrusion Detection System (IDS) for
-IoT/MEC environments. Phase 1 runs a binary LightGBM classifier on the edge
-node, optimized by the F2-score; Phase 2 classifies the specific attack type
-using a multiclass LightGBM. The data
-pipeline uses PCAP captures from two CIC datasets converted by
-\textit{netflower}, a tool developed for this project, into a 190~GB SQLite
-database. In offline evaluation, Phase 1 achieved 80\% accuracy and 96\%
-attack recall (F2 = 0.886). In a fully scripted testbed validation on VIM~4
-covering all eight attack categories, detection is scored \emph{per flow},
-labelling each flow by the attack window in which it started. This metric is
-independent of the flow-extractor emission delay (median 163--216~s) that
-invalidated per-second scoring. The binary IDS reached a per-flow precision of
-$0.99$ (recall $0.81$, F1 $0.89$), reported over both strict ground-truth
-windows and a $+2$~s calibration that corrects the orchestrator's start-logging
-lag. Detection was near-instant (first detected flow within 0--6~s) and
-strongest on volumetric floods (spoofing recall $1.00$, DoS $0.84$--$0.95$),
-whereas low-volume attacks produced too few flows to be detected (brute force,
-MITM) or were largely missed (web). The multiclass IDS classified
-reconnaissance well (F1 = 0.861), but the remaining categories collapse onto
-the DoS class within the 55 per-flow features (macro-F1 = 0.27), exposing a
-feature-space limitation rather than a pipeline fault. Adding Phase~2 costs only
-+50~MB of RAM with no CPU or energy overhead. Energy is reported as a calibrated
-CPU-utilization estimate with an explicit uncertainty band, since the ARM node
-exposes no direct power sensor. Results demonstrate the viability of the
-hierarchical approach within the resource budget of an ARM edge node and
-delimit where per-flow features become insufficient.
-\end{abstract}
+% ============================================================================
+\section{IDENTIFICAÇÃO}
+\label{sec:identificacao}
 
-%─────────────────────────────────────────────────────────────────────────────
-\begin{resumo}
-O crescimento exponencial de dispositivos da Internet das Coisas (IoT) e a
-emergência das redes de sexta geração (6G) introduzem novos desafios de
-segurança cibernética em ambientes de Computação de Borda de Acesso Múltiplo (MEC).
-Este trabalho propõe e implementa um Sistema de Detecção de Intrusão (IDS)
-hierárquico de duas fases para ambientes IoT/MEC. A Fase~1 executa um
-classificador binário LightGBM no nó de borda, otimizado pelo escore F2; a
-Fase~2 classifica o tipo específico de ataque com LightGBM multiclasse. O pipeline utiliza PCAPs de
-dois datasets do CIC, convertidos pela ferramenta \textit{netflower} em banco
-SQLite de $\sim$190~GB. Em avaliação offline local, a Fase~1 atingiu acurácia de
-80\% e revocação de 96\% na classe de ataque (F2 = 0,886). Em uma validação em
-\textit{testbed} totalmente automatizada no VIM~4 cobrindo as oito categorias de
-ataque, a detecção é avaliada \emph{por fluxo}, rotulando cada fluxo pela janela
-de ataque em que ele \emph{começou}. Essa métrica independe do atraso de emissão
-do extrator de fluxos (mediana de 163--216~s) que invalidava a contagem por
-segundo. O IDS binário alcançou precisão por fluxo de $0{,}99$ (revocação de
-$0{,}81$, F1 de $0{,}89$), reportada tanto sobre janelas estritas de
-\textit{ground truth} quanto sobre uma calibração de $+2$~s que corrige a
-defasagem de registro do orquestrador. A detecção foi quase instantânea (primeiro
-fluxo detectado em 0--6~s) e mais forte nas inundações volumétricas
-(\textit{spoofing} com revocação $1{,}00$, DoS $0{,}84$--$0{,}95$), enquanto os
-ataques de baixo volume geraram poucos fluxos para serem detectados (força bruta,
-MITM) ou foram majoritariamente perdidos (web). O IDS multiclasse classificou bem
-o reconhecimento (F1 = 0,861), mas as demais categorias colapsam na classe DoS
-dentro das 55 \textit{features} por-fluxo (macro-F1 = 0,27), evidenciando uma
-limitação do espaço de \textit{features}, não do pipeline. Adicionar a Fase~2
-custa apenas +50~MB de RAM, sem overhead de CPU ou energia. A energia é reportada como
-estimativa calibrada por utilização de CPU com banda de incerteza explícita,
-pois o nó ARM não expõe sensor de potência direto. Os resultados confirmam a
-viabilidade da abordagem hierárquica dentro do orçamento de recursos de um nó de
-borda ARM e delimitam onde as \textit{features} por-fluxo se tornam
-insuficientes.
-\end{resumo}
+\noindent
+\begin{tabular}{|p{5.9cm}|p{9.1cm}|}
+\hline
+Nome do(a) Orientador(a): &
+  Andson M. Balieiro (orientador) e Caio B. B. de Souza (coorientador) \\ \hline
+Nome do(a) Estudante: &
+  Luiz Henrique B. A. da Silva \\ \hline
+Área do projeto: &
+  Ciência da Computação (Redes de Computadores e Segurança da Informação) \\ \hline
+Título do projeto: &
+  Tecnologias e Mecanismos Sustentáveis para Segurança e Alocação de Recursos
+  em Redes 5G Avançadas e 6G (plano de trabalho: Uma Solução Hierárquica para
+  Detecção de Ciberataques em Ambientes IoT baseados em Redes MEC 6G) \\ \hline
+Houve alteração do nome do projeto original? Se sim, acrescente aqui o nome do
+projeto originalmente aprovado &
+  Não \\ \hline
+ID do projeto &
+  PIC2570-2025 \\ \hline
+ODS na qual projeto se insere &
+  ODS 9 -- Indústria, Inovação e Infraestrutura: construir infraestruturas
+  resilientes, promover a industrialização inclusiva e sustentável e fomentar
+  a inovação \\ \hline
+\end{tabular}
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Introdução}
+% ============================================================================
+\section{RESUMO}
+\label{sec:resumo}
 
-A convergência entre redes móveis da Sexta Geração (6G), Internet das Coisas (IoT) e Computação de Borda de Acesso Múltiplo (MEC) promete transformar a infraestrutura
-de comunicação digital com estimativas de densidades de dispositivos IoT na
-ordem de $10^6$ por km² e latências de comunicação inferiores a 1~ms, sendo a tecnologia MEC um componente essencial para viabilizar esses requisitos~\cite{you:21}. Contudo,
-a massificação de dispositivos expande a superfície de ataques cibernéticos, pois dispositivos IoT frequentemente possuem poder computacional e energia reduzidos, o que inviabiliza a adoção de soluções de segurança tradicionais diretamente nos terminais.
+A Internet das Coisas (IoT) e as redes de sexta geração (6G) ampliam a
+superfície de ataque em ambientes de Computação de Borda de Acesso Múltiplo
+(MEC), cujos dispositivos têm recursos limitados. Este projeto implementou e
+validou um Sistema de Detecção de Intrusão (IDS) hierárquico de
+duas fases para ambientes IoT/MEC, executado em um nó de borda ARM (VIM~4). A
+Fase~1 é um classificador binário LightGBM otimizado pelo escore F2; a Fase~2,
+acionada só sobre fluxos suspeitos, classifica o tipo de ataque com LightGBM
+multiclasse. O pipeline de dados converte capturas PCAP de dois datasets do
+CIC, com a ferramenta \textit{netflower}, criada no projeto, em um banco SQLite
+de $\sim$190~GB. Em avaliação \textit{offline}, a Fase~1 alcançou revocação
+de 96\% na classe de ataque (F2 = 0,886). No \textit{testbed}, com oito
+categorias de ataque, a detecção é avaliada \emph{por fluxo} (cada fluxo
+rotulado pela janela de ataque em que começou, métrica imune ao atraso de
+emissão do extrator, de 163--216~s de mediana): o IDS binário alcançou precisão
+por fluxo de $\approx$0,99 e revocação de $\approx$0,81 (F1 de $\approx$0,89),
+com detecção quase instantânea (0--6~s) e mais forte nas inundações volumétricas
+(\textit{spoofing} com revocação de 1,00 e DoS entre 0,84 e 0,95), enquanto os
+ataques de baixo volume (força bruta, MITM e web) geraram poucos fluxos para
+serem avaliados ou foram majoritariamente perdidos. A Fase~2 classificou o
+reconhecimento de rede com F1 = 0,861 ao custo de apenas 53~MB de RAM, sem
+sobrecarga de CPU ou energia, mas colapsa os demais tipos na classe DoS
+(macro-F1 de 0,27). Os resultados confirmam a viabilidade da abordagem na borda
+e delimitam onde as \textit{features} por fluxo deixam de separar tipos de
+ataque.
+
+\renewcommand{\contentsname}{SUMÁRIO}
+\tableofcontents
+
+% ============================================================================
+\section{INTRODUÇÃO}
+\label{sec:introducao}
+
+A convergência entre redes móveis da Sexta Geração (6G), Internet das Coisas
+(IoT) e Computação de Borda de Acesso Múltiplo (MEC) promete transformar a
+infraestrutura de comunicação digital, com estimativas de densidades de
+dispositivos IoT na ordem de $10^6$ por km² e latências de comunicação
+inferiores a 1~ms, sendo a tecnologia MEC um componente essencial para
+viabilizar esses requisitos~\cite{you:21}. Contudo, a massificação de
+dispositivos expande a superfície de ataques cibernéticos: dispositivos IoT
+frequentemente possuem poder computacional e energia reduzidos, o que
+inviabiliza a adoção de soluções de segurança tradicionais diretamente nos
+terminais.
 
 Na literatura, Sistemas de Detecção de Intrusão (IDS) baseados em regras e
-assinaturas têm sido implantados em nós de borda (MEC) para aproximar a detecção
-dos dispositivos IoT e reduzir a latência de resposta. Essas soluções comparam o
-tráfego observado a padrões de ataque previamente catalogados e, por isso,
-alcançam alta precisão sobre ameaças conhecidas~\cite{lazarevic:05}. Sua
-limitação estrutural, contudo, está no que não conhecem: ataques inéditos ou
-variantes de ataques existentes não correspondem a nenhuma assinatura registrada
-e atravessam o detector sem gerar alerta. Além disso, manter o conjunto de
-regras atualizado exige intervenção manual constante, o que se torna
-impraticável na escala e na diversidade de dispositivos previstas para as redes
-6G.
+assinaturas têm sido implantados em nós de borda (MEC) para aproximar a
+detecção dos dispositivos IoT e reduzir a latência de resposta. Essas soluções
+comparam o tráfego observado a padrões de ataque previamente catalogados e,
+por isso, alcançam alta precisão sobre ameaças conhecidas~\cite{lazarevic:05}.
+Sua limitação estrutural está no que não conhecem: ataques inéditos ou
+variantes de ataques existentes não correspondem a nenhuma assinatura
+registrada e atravessam o detector sem gerar alerta. Além disso, manter o
+conjunto de regras atualizado exige intervenção manual constante, o que se
+torna impraticável na escala e na diversidade de dispositivos previstas para
+as redes 6G. Diante dessas limitações, IDS baseados em aprendizado de máquina
+executados em nós de borda surgem como alternativa viável: treinados com dados
+históricos de tráfego, classificam fluxos de rede em tempo real e generalizam
+para padrões de ataque não vistos, mantendo baixo custo computacional na
+inferência~\cite{gyamfi:22}. A combinação da detecção por assinatura com a
+detecção por anomalia em arquiteturas hierárquicas representa o estado da arte
+para ambientes com restrições de recursos, como dispositivos IoT e nós de
+borda MEC~\cite{zolanvari:19}.
 
-Diante dessas limitações, IDS baseados em aprendizado de máquina executados em
-nós de borda surgem como alternativa viável: treinados com dados históricos de
-tráfego, classificam fluxos de rede em tempo real e generalizam para padrões de
-ataque não vistos, mantendo baixo custo computacional na
-inferência~\cite{gyamfi:22}. Trabalhos recentes corroboram essa direção:
-classificadores treinados sobre datasets de IoT do Canadian Institute for
-Cybersecurity (CIC) alcançam alta acurácia na detecção de
-ataques~\cite{houichi:25,chen:24}, arquiteturas colaborativas distribuem a
-detecção entre borda e nuvem~\cite{yang:23} e esquemas de dois estágios filtram
-o tráfego com um classificador leve antes de acionar um mais
-custoso~\cite{aldaej:24}. Ainda assim, essas soluções enfrentam desafios em
-aberto: conjuntos de dados capturados em ambientes controlados induzem desvio de
-distribuição (\textit{distribution shift}) quando o modelo encontra tráfego
-real, degradando a acurácia, e a diversidade de tipos de ataque demanda
-objetivos de otimização distintos, como latência mínima na borda e maior
-capacidade de detecção nas camadas superiores, o que motiva uma abordagem
-hierárquica em que cada camada da arquitetura MEC é otimizada para um objetivo
-próprio.
-
-Este trabalho endereça essas limitações propondo um IDS
-hierárquico de duas fases para ambientes IoT/MEC. A primeira fase é um
-classificador binário leve, executado no nó de borda, que rotula cada fluxo de
-rede como benigno ou malicioso. A segunda é um classificador multiclasse,
-acionado apenas sobre os fluxos sinalizados como maliciosos, que os atribui a
-classes específicas de ataque. Descreve-se o pipeline metodológico completo,
-desde a coleta de dados em formato PCAP até a implantação e a avaliação da
-solução em um dispositivo embarcado (Khadas VIM4).
-
-Cabe delimitar o sentido em que os termos MEC e 6G do título se aplicam a este
-trabalho. A avaliação não ocorre sobre uma rede 6G operacional, cuja
-padronização ainda está em curso~\cite{you:21}, nem sobre uma infraestrutura
-MEC comercial completa: o \textit{testbed} instancia o elemento dessa
-arquitetura no qual o IDS proposto reside, um nó de computação de borda ARM
-posicionado junto aos dispositivos que protege. MEC é empregado, portanto, no
-sentido do paradigma de computação na borda de acesso
-múltiplo~\cite{gyamfi:22}, cujo requisito definidor, inspecionar o tráfego
-próximo aos dispositivos dentro de um orçamento restrito de recursos, é
-exatamente o que o nó avaliado reproduz. Já 6G designa o regime de requisitos
-que motiva e dimensiona a solução: as densidades de dispositivos e as
-latências-alvo projetadas para essas redes~\cite{you:21} tornam a inspeção
-local na borda um requisito de projeto, e não uma otimização opcional. Como o
-IDS opera sobre fluxos IP reconstruídos acima da camada de acesso, a detecção
-independe da tecnologia de rádio subjacente; os resultados obtidos na rede
-local do \textit{testbed} caracterizam o custo e o comportamento do detector no
-nó de borda e transferem-se a implantações MEC em redes 6G, nas quais muda o
-enlace de acesso, não a representação de fluxos sobre a qual o detector decide.
-
-As principais contribuições são um pipeline de dados reprodutível baseado em
-SQLite para amostragem balanceada em escala, a ferramenta \textit{netflower},
-publicada no PyPI, para conversão paralela de PCAPs em fluxos, o IDS hierárquico
-com duas fases complementares e a validação no \textit{testbed} com tráfego de
-ataque real, com comparação quantitativa entre o pipeline binário e o
-multiclasse em métricas de detecção (acurácia, precisão, revocação, F1, taxas de
-falsos positivos, FPR, e de falsos negativos, FNR) e de custo (consumo de CPU, RAM e energia, além de \textit{throughput} de alertas). Nos resultados mais relevantes, avaliados \emph{por fluxo} (cada fluxo rotulado pela janela de ataque em que começou, métrica imune ao atraso de emissão do extrator, de 163--216~s de mediana), o IDS binário alcançou precisão de $\approx$0,99 e revocação de $\approx$0,81 (F1 de $\approx$0,89), com detecção quase instantânea (primeiro fluxo em 0--6~s). A detecção é forte nas inundações volumétricas (\textit{spoofing} com revocação de 1,00 e DoS entre 0,84 e 0,95), mas os ataques de baixo volume geraram poucos fluxos para serem avaliados (força bruta e \textit{Man-in-the-Middle}, MITM) ou foram majoritariamente perdidos (web), um limite empírico que a solução torna explícito. A Fase~2 acrescentou apenas 50~MB de RAM, sem overhead de CPU ou energia, classificou corretamente o reconhecimento de rede (F1 = 0,861) e delimitou empiricamente onde as 55 \textit{features} por fluxo deixam de separar os tipos de ataque, colapsando-os na classe DoS (macro-F1 de 0,27).
-
-O artigo está organizado da seguinte forma. A Seção~\ref{trabalhosRelacionados} apresenta os trabalhos relacionados e a fundamentação teórica; a Seção~\ref{sec:metodologia} descreve a metodologia proposta; a Seção~\ref{sec:resultados} apresenta e discute os resultados da validação no \textit{testbed}; e a Seção~\ref{sec:conclusao} conclui o trabalho e aponta os trabalhos futuros.
-
-%─────────────────────────────────────────────────────────────────────────────
-\section{Trabalhos Relacionados}
-\label{trabalhosRelacionados}
-
-IDS podem ser classificados em baseados em assinatura e baseados em anomalia.
-Os primeiros identificam padrões conhecidos com alta precisão, mas são incapazes de detectar ameaças novas. Os baseados em anomalia aprendem um perfil do comportamento normal e sinalizam desvios, sendo mais adequados para ambientes dinâmicos~\cite{lazarevic:05}. A combinação das duas abordagens em arquiteturas hierárquicas representa o estado da arte para ambientes com restrições de recursos, como dispositivos IoT e nós de borda MEC~\cite{zolanvari:19}. Esta seção revisa os trabalhos que aplicam aprendizado de máquina à detecção de intrusão em IoT, os que levam a detecção a nós MEC, os que adotam múltiplos estágios de classificação e os que tratam da segurança em redes 6G, posicionando ao final a presente proposta e as ferramentas que a fundamentam.
-
-Os datasets do CIC são amplamente usados para treinar e avaliar IDS em redes IoT. O CIC IoT Dataset 2023~\cite{neto:23}, por exemplo, reproduz uma topologia de 105 dispositivos com 33 ataques organizados em sete categorias: Negação de Serviço Distribuída (DDoS), Negação de Serviço (DoS), \textit{recon}, ataques web, força bruta, \textit{spoofing} e Mirai. Sobre essa base, Houichi et~al.~\cite{houichi:25} comparam classificadores clássicos de aprendizado de
-máquina para segurança de cidades inteligentes, enquanto Chen
+Trabalhos recentes corroboram essa direção. Os datasets do Canadian Institute
+for Cybersecurity (CIC) são amplamente usados para treinar e avaliar IDS em
+redes IoT; o CIC IoT Dataset 2023~\cite{neto:23}, por exemplo, reproduz uma
+topologia de 105 dispositivos com 33 ataques organizados em sete categorias:
+Negação de Serviço Distribuída (DDoS), Negação de Serviço (DoS),
+\textit{recon}, ataques web, força bruta, \textit{spoofing} e Mirai. Sobre
+essa base, Houichi et~al.~\cite{houichi:25} comparam classificadores clássicos
+de aprendizado de máquina para segurança de cidades inteligentes, e Chen
 et~al.~\cite{chen:24} combinam LightGBM com seleção de \textit{features} por um
-algoritmo \textit{salp swarm} aprimorado para detecção de ataques em larga
-escala. Entretanto, esses trabalhos apresentam apenas métricas \textit{offline} sobre o conjunto de teste do próprio dataset. Eles não avaliam o modelo implantado em
-um nó de borda real, nem o desvio entre o tráfego do dataset e o de produção real, lacunas centrais endereçadas pelo trabalho aqui proposto.
-
-Mover a detecção para a borda, por sua vez, é motivado pela baixa
-latência e pelo volume de tráfego em IoT. Gyamfi e Jurcut~\cite{gyamfi:22}
-revisam abordagens de projeto de IDS que combinam MEC, aprendizado de máquina e datasets, mapeando o espaço de soluções para o cenário deste
-trabalho. Yang et~al.~\cite{yang:23} propõem detecção eficiente por colaboração \textit{cloud--edge}, distribuindo o processamento entre a borda e a nuvem central.
-Nessas arquiteturas, porém, a etapa com maior carga de processamento é tipicamente movida para a nuvem central, e o custo de manter a detecção \textit{no próprio nó de borda}, em termos de CPU, RAM e energia, raramente é medido,  diferentemente do estudo aqui proposto. 
-
-A ideia de filtrar o tráfego com um classificador leve antes de acionar um mais custoso também é recorrente na literatura. Aldaej et~al.~\cite{aldaej:24} propõem um IDS de dois estágios para plataformas
-IoT-borda: um classificador binário inicial e, em seguida, um \textit{ensemble} para refinar a decisão sobre os fluxos sinalizados. A presente proposta compartilha essa filosofia de duas fases, mas distingue-se em dois pontos: ambas
-as fases executam no mesmo nó de borda, e não distribuídas entre camadas, e o custo marginal de adicionar a segunda fase é isolado e medido diretamente no dispositivo, em vez de inferido apenas de avaliação
-\textit{offline}.
-
-No horizonte das redes 6G, esse cenário se agrava: densidade de
-dispositivos e metas de latência sub-milissegundo sem precedentes~\cite{you:21}
-expandem a superfície de ataque ao mesmo tempo em que reduzem a janela de
-tempo disponível para detectar e reagir a uma intrusão. Sob essas restrições,
-encaminhar todo o tráfego a um detector centralizado na nuvem conflita com os
-requisitos de latência, tornando a inspeção no próprio nó de borda MEC um
-requisito de projeto, e não mera otimização. Nessa direção, Chinnasamy
-et~al.~\cite{chinnasamy:25} discutem sistemas de detecção e prevenção de intrusão
-guiados por inteligência artificial para proteger redes 6G, reforçando a
-necessidade de detectores que conciliem alta acurácia e baixo custo
-computacional em nós de borda. É exatamente esse o regime de operação do IDS
-hierárquico avaliado neste trabalho.
-
-Esse conjunto de trabalhos avança em modelos de detecção, em arquiteturas de
-borda e nos requisitos de segurança de 6G, mas nenhum deles acompanha um IDS
-hierárquico do treinamento à operação em um dispositivo de borda real. É essa
-lacuna que o presente trabalho ocupa, com uma demonstração ponta a ponta em que
-ambas as fases executam em um nó de borda ARM de recursos limitados e a
-avaliação com tráfego de ataque real complementa as métricas \textit{offline}.
-O custo incremental da segunda fase, em CPU, RAM e energia, é medido diretamente
-no dispositivo, e fenômenos operacionais geralmente ausentes de avaliações
-puramente \textit{offline}, como o desvio de distribuição entre treino e
-produção e a saturação do extrator de fluxos sob \textit{flood}, são
-caracterizados e mitigados. A Tabela~\ref{tab:related} sintetiza esse
-posicionamento, contrastando os trabalhos revisados segundo as cinco dimensões
-que distinguem a presente proposta.
+algoritmo \textit{salp swarm} aprimorado; ambos, porém, reportam apenas
+métricas \textit{offline} sobre o conjunto de teste do próprio dataset, sem
+avaliar o modelo implantado em um nó de borda real nem o desvio entre o
+tráfego do dataset e o de produção. Mover a detecção para a borda é motivado
+pela baixa latência e pelo volume de tráfego em IoT: Gyamfi e
+Jurcut~\cite{gyamfi:22} revisam abordagens de projeto de IDS que combinam MEC,
+aprendizado de máquina e datasets, e Yang et~al.~\cite{yang:23} propõem
+detecção eficiente por colaboração \textit{cloud--edge}. Nessas arquiteturas,
+contudo, a etapa com maior carga de processamento é tipicamente movida para a
+nuvem central, e o custo de manter a detecção no próprio nó de borda, em
+termos de CPU, RAM e energia, raramente é medido. A ideia de filtrar o tráfego
+com um classificador leve antes de acionar um mais custoso também é recorrente:
+Aldaej et~al.~\cite{aldaej:24} propõem um IDS de dois estágios para
+plataformas IoT-borda, com um classificador binário inicial seguido de um
+\textit{ensemble} sobre os fluxos sinalizados. A presente proposta compartilha
+essa filosofia, mas distingue-se por executar ambas as fases no mesmo nó de
+borda e por isolar e medir o custo marginal da segunda fase diretamente no
+dispositivo. No horizonte das redes 6G, densidade de dispositivos e metas de
+latência sub-milissegundo sem precedentes~\cite{you:21} expandem a superfície
+de ataque ao mesmo tempo em que reduzem a janela disponível para detectar e
+reagir a uma intrusão; nessa direção, Chinnasamy et~al.~\cite{chinnasamy:25}
+discutem sistemas de detecção e prevenção de intrusão guiados por inteligência
+artificial para redes 6G e reforçam a necessidade de detectores que conciliem
+alta acurácia e baixo custo computacional em nós de borda, exatamente o regime
+de operação avaliado neste trabalho. A Tabela~\ref{tab:related} sintetiza esse
+posicionamento segundo as cinco dimensões que distinguem a presente proposta.
 
 \begin{table}[ht]
 \centering
-\caption{Posicionamento do trabalho proposto frente à literatura segundo cinco dimensões de avaliação.}
+\caption{Posicionamento do trabalho frente à literatura segundo cinco dimensões de avaliação.}
 \label{tab:related}
 \setlength{\tabcolsep}{4pt}
 \resizebox{\textwidth}{!}{%
@@ -261,24 +252,108 @@ Chinnasamy et~al.~\cite{chinnasamy:25} & Não & Não & Não & Não & Sim \\
 \end{tabular}}
 \end{table}
 
-Duas ferramentas sustentam a etapa de aprendizado da proposta. O treinamento
-ocorre sobre milhões de fluxos descritos por dezenas de \textit{features}, mas a
-inferência precisa caber no orçamento computacional de um nó de borda ARM, o que
-pede um algoritmo que combine acurácia em dados tabulares de alta
-dimensionalidade com modelos compactos e rápidos na predição. O
-LightGBM~\cite{ke:17} atende a esse perfil: é um método de \textit{gradient
-boosting} sobre árvores de decisão com crescimento folha a folha
-(\textit{leaf-wise}), que converge rapidamente e produz modelos leves o
-suficiente para inferência em dispositivos restritos. Resta o ajuste de
-hiperparâmetros, cuja busca exaustiva seria proibitiva no volume de dados
-utilizado; o Optuna~\cite{akiba:19} trata esse problema com otimização baseada
-em TPE (\textit{Tree-structured Parzen Estimator}) e poda antecipada de
-tentativas pouco promissoras, reduzindo o custo de encontrar boas configurações.
-Ambas as ferramentas são empregadas no treinamento das duas fases
-(Seção~\ref{subsec:treinamento}).
+Esse conjunto de trabalhos avança em modelos de detecção, em arquiteturas de
+borda e nos requisitos de segurança de 6G, mas nenhum deles acompanha um IDS
+hierárquico do treinamento à operação em um dispositivo de borda real. Somam-se
+a essa lacuna dois desafios em aberto: conjuntos de dados capturados em
+ambientes controlados induzem desvio de distribuição (\textit{distribution
+shift}) quando o modelo encontra tráfego real, degradando a acurácia; e a
+diversidade de tipos de ataque demanda objetivos de otimização distintos, como
+latência mínima na borda e maior capacidade de detecção nas camadas
+superiores, o que motiva uma abordagem hierárquica em que cada camada da
+arquitetura MEC é otimizada para um objetivo próprio.
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Metodologia}
+Este projeto endereça essas lacunas propondo, implementando e validando um IDS
+hierárquico de duas fases para ambientes IoT/MEC. A primeira fase é um
+classificador binário leve, executado no nó de borda, que rotula cada fluxo de
+rede como benigno ou malicioso. A segunda é um classificador multiclasse,
+acionado apenas sobre os fluxos sinalizados como maliciosos, que os atribui a
+classes específicas de ataque. O trabalho cobre o pipeline completo, desde a
+coleta de dados em formato PCAP até a implantação e a avaliação da solução em
+um dispositivo embarcado (Khadas VIM~4), com tráfego de ataque real. Cabe
+delimitar o sentido em que os termos MEC e 6G se aplicam: a avaliação não
+ocorre sobre uma rede 6G operacional, cuja padronização ainda está em
+curso~\cite{you:21}, nem sobre uma infraestrutura MEC comercial completa. O
+\textit{testbed} instancia o elemento dessa arquitetura no qual o IDS reside,
+um nó de computação de borda ARM posicionado junto aos dispositivos que
+protege, no sentido do paradigma de computação na borda de acesso
+múltiplo~\cite{gyamfi:22}, cujo requisito definidor, inspecionar o tráfego
+próximo aos dispositivos dentro de um orçamento restrito de recursos, é
+exatamente o que o nó avaliado reproduz. Já 6G designa o regime de requisitos
+que motiva e dimensiona a solução. Como o IDS opera sobre fluxos IP
+reconstruídos acima da camada de acesso, a detecção independe da tecnologia de
+rádio subjacente; os resultados obtidos na rede local do \textit{testbed}
+caracterizam o custo e o comportamento do detector no nó de borda e
+transferem-se a implantações MEC em redes 6G, nas quais muda o enlace de
+acesso, não a representação de fluxos sobre a qual o detector decide.
+
+As principais contribuições são um pipeline de dados reprodutível baseado em
+SQLite para amostragem balanceada em escala; a ferramenta \textit{netflower},
+publicada no PyPI, para conversão paralela de PCAPs em fluxos e captura ao
+vivo em dispositivos de borda; o IDS hierárquico com duas fases
+complementares; e a validação no \textit{testbed} com tráfego de ataque real,
+com comparação quantitativa entre o pipeline binário e o multiclasse em
+métricas de detecção (acurácia, precisão, revocação, F1 e taxas de falsos
+positivos, FPR, e de falsos negativos, FNR) e de custo (CPU, RAM, energia e
+\textit{throughput} de alertas). Nos resultados mais relevantes, avaliados
+\emph{por fluxo} (cada fluxo rotulado pela janela em que começou, métrica imune
+ao atraso de emissão do extrator, de 163--216~s de mediana), o IDS binário
+alcançou precisão de $\approx$0,99 e revocação de $\approx$0,81 (F1 de
+$\approx$0,89), com detecção quase instantânea (primeiro fluxo em 0--6~s) e
+forte nas inundações volumétricas (\textit{spoofing} com revocação de 1,00 e
+DoS entre 0,84 e 0,95), enquanto os ataques de baixo volume geraram poucos
+fluxos para serem avaliados (força bruta e \textit{Man-in-the-Middle}, MITM) ou
+foram majoritariamente perdidos (web). A Fase~2 acrescentou apenas 50~MB de RAM,
+sem sobrecarga de CPU ou energia, classificou corretamente o reconhecimento de
+rede (F1 = 0,861) e delimitou empiricamente onde as 55 \textit{features} por
+fluxo deixam de separar os tipos de ataque, colapsando-os na classe DoS
+(macro-F1 de 0,27).
+As seções seguintes apresentam os objetivos do plano de trabalho
+(Seção~\ref{sec:objetivos}), a metodologia (Seção~\ref{sec:metodologia}), os
+resultados da validação no \textit{testbed} (Seção~\ref{sec:resultados}) e as
+conclusões (Seção~\ref{sec:conclusoes}).
+
+% ============================================================================
+\section{OBJETIVOS}
+\label{sec:objetivos}
+
+O objetivo geral do plano de trabalho foi propor, implementar e validar
+experimentalmente um IDS hierárquico para ambientes IoT/MEC em redes 6G,
+capaz de executar integralmente em um nó de borda ARM de recursos limitados,
+conciliando alta capacidade de detecção com baixo custo de CPU, memória e
+energia.
+
+Os objetivos específicos foram:
+
+\begin{enumerate}
+  \item construir um pipeline de dados reprodutível que converta capturas
+    brutas (PCAP) dos datasets CIC IoT 2023 e CIC IIoT 2025, complementadas
+    por tráfego benigno real, em uma base de fluxos consultável e amostrável
+    em escala (SQLite);
+  \item desenvolver uma ferramenta de extração de fluxos bidirecionais
+    compatível com o conjunto de \textit{features} do CICFlowMeter e leve o
+    suficiente para captura ao vivo em dispositivos ARM (\textit{netflower});
+  \item definir a taxonomia de ataques e o conjunto final de
+    \textit{features}, removendo atributos que induzem memorização de hosts
+    ou desvio entre treino e implantação;
+  \item treinar e otimizar a Fase~1 (classificador binário, escore F2) e a
+    Fase~2 (classificador multiclasse, macro F1) com LightGBM e Optuna, e
+    avaliar seu desempenho \textit{offline};
+  \item implantar as duas fases no nó de borda (Khadas VIM~4) e validá-las em
+    \textit{testbed} com tráfego real das oito categorias de ataque, medindo
+    métricas de detecção (precisão, revocação, F1, FPR e FNR) e de custo (CPU,
+    RAM, energia e \textit{throughput});
+  \item comparar quantitativamente o pipeline binário (Fase~1) e o
+    hierárquico completo (Fases~1+2), isolando o custo marginal da segunda
+    fase no dispositivo;
+  \item explorar, de forma preliminar e \textit{offline}, uma terceira fase de
+    agrupamento não supervisionado para os fluxos classificados com baixa
+    confiança pela Fase~2, como base para a detecção de ameaças desconhecidas
+    em trabalhos futuros.
+\end{enumerate}
+
+% ============================================================================
+\section{METODOLOGIA}
 \label{sec:metodologia}
 
 A metodologia adotada cobre todo o ciclo do sistema, desde a coleta de capturas
@@ -290,11 +365,15 @@ Capture}, PCAP), convertido em fluxos bidirecionais pela ferramenta
 engenharia de características que reduz o vetor de \textit{features}. Os dados
 resultantes treinam os dois classificadores que compõem o IDS hierárquico e os
 modelos treinados são implantados no nó de borda (placa VIM~4) para validação no
-\textit{testbed} com tráfego de ataque real. As subseções seguintes detalham cada etapa na ordem da Figura~\ref{fig:metodologia}. A arquitetura hierárquica (Seção~\ref{subsec:arquitetura}), o pipeline de dados (Seção~\ref{subsec:pipeline}), o mapeamento de rótulos
+\textit{testbed} com tráfego de ataque real. As subseções seguintes detalham cada
+etapa na ordem da Figura~\ref{fig:metodologia}: a arquitetura hierárquica
+(Seção~\ref{subsec:arquitetura}), o pipeline de dados
+(Seção~\ref{subsec:pipeline}), o mapeamento de rótulos
 (Seção~\ref{subsec:rotulos}), a engenharia de características
 (Seção~\ref{subsec:features}), o treinamento das duas fases
-(Seção~\ref{subsec:treinamento}) e o protocolo de validação no \textit{testbed}
-(Seção~\ref{subsec:validacao}).
+(Seção~\ref{subsec:treinamento}), o protocolo de validação no \textit{testbed}
+(Seção~\ref{subsec:validacao}) e as métricas usadas na avaliação
+(Seção~\ref{subsec:metricas}).
 
 \begin{figure}[ht]
 \centering
@@ -326,39 +405,43 @@ modelos treinados são implantados no nó de borda (placa VIM~4) para validaçã
 \label{subsec:arquitetura}
 
 Devido às restrições inerentes a ambientes IoT/MEC, adotou-se uma arquitetura
-hierárquica de duas fases. Como a maioria do tráfego em qualquer
-rede é benigna, aplicar um classificador pesado sobre todos os fluxos
-desperdiçaria energia e capacidade do nó de borda. Além disso, diferentes etapas do
-pipeline têm objetivos de otimização distintos: a detecção binária privilegia a
-revocação, para não deixar ataques passarem, enquanto a classificação de tipo
-privilegia a precisão por classe. Um pipeline progressivo concilia essas
-restrições, pois a Fase~1 filtra o tráfego benigno com custo mínimo e somente os
-fluxos suspeitos avançam à Fase~2 para classificação de tipo.
+hierárquica de duas fases. Como a maioria do tráfego em qualquer rede é benigna,
+aplicar um classificador pesado sobre todos os fluxos desperdiçaria energia e
+capacidade do nó de borda. Além disso, diferentes etapas do pipeline têm
+objetivos de otimização distintos: a detecção binária privilegia a revocação,
+para não deixar ataques passarem, enquanto a classificação de tipo privilegia a
+precisão por classe. Um pipeline progressivo concilia essas restrições, pois a
+Fase~1 filtra o tráfego benigno com custo mínimo e somente os fluxos suspeitos
+avançam à Fase~2 para classificação de tipo.
 
 A arquitetura, ilustrada na Figura~\ref{fig:arquitetura}, distribui a carga
 computacional hierarquicamente em duas fases complementares:
 
 \begin{enumerate}
-  \item \textbf{Fase~1 — Classificador binário (nó de borda):} decide
+  \item \textbf{Fase~1, classificador binário (nó de borda):} decide
     \textit{benigno vs.\ ataque} com mínimo custo computacional, atuando como um
     filtro de primeira linha sobre todo o tráfego observado na interface de rede.
-  \item \textbf{Fase~2 — Classificador multiclasse (nó de borda ou host):}
+  \item \textbf{Fase~2, classificador multiclasse (nó de borda ou host):}
     identifica o tipo específico de ataque apenas para os fluxos sinalizados pela
     Fase~1. Por ser mais pesada, é a candidata natural a descarregamento para um
     host dedicado quando o nó de borda for muito restrito.
 \end{enumerate}
 
 O encadeamento das duas fases tem efeito direto sobre o custo de operação. Cada
-fluxo extraído pelo \textit{netflower} é primeiro submetido à Fase~1. Caso  a
+fluxo extraído pelo \textit{netflower} é primeiro submetido à Fase~1. Caso a
 probabilidade de ataque estimada não atinja o limiar de decisão, o fluxo é
 tratado como benigno e descartado sem custo adicional, de modo que o volume
 dominante de tráfego legítimo nunca chega ao segundo modelo. Apenas a fração
-sinalizada como suspeita aciona a Fase~2, que lhe atribui um rótulo de tipo. Como a inferência da Fase~2 ocorre em série após a Fase~1 e sobre um número reduzido de fluxos, seu custo marginal é pequeno e amortizado pelo rastreamento de fluxos, que já domina o tempo de processamento (Seção~\ref{sec:resultados}). Neste trabalho, ambas as fases foram avaliadas executando no próprio nó de
-borda, um dispositivo VIM~4, enquanto um computador pessoal (PC) atuou como
-gerador de ataques e como plataforma de treinamento dos modelos. Manter a Fase~2
-no nó de borda, em vez de descarregá-la em um host separado, permite medir o
-custo adicional do segundo modelo diretamente no dispositivo de borda
-(Seção~\ref{sec:resultados}).
+sinalizada como suspeita aciona a Fase~2, que lhe atribui um rótulo de tipo.
+Como a inferência da Fase~2 ocorre em série após a Fase~1 e sobre um número
+reduzido de fluxos, seu custo marginal é pequeno e amortizado pelo rastreamento
+de fluxos, que já domina o tempo de processamento
+(Seção~\ref{sec:resultados}). Neste trabalho, ambas as fases foram avaliadas
+executando no próprio nó de borda, um dispositivo VIM~4, enquanto um computador
+pessoal (PC) atuou como gerador de ataques e como plataforma de treinamento dos
+modelos. Manter a Fase~2 no nó de borda, em vez de descarregá-la em um host
+separado, permite medir o custo adicional do segundo modelo diretamente no
+dispositivo de borda (Seção~\ref{sec:resultados}).
 
 \begin{figure}[ht]
 \centering
@@ -398,7 +481,7 @@ Para treinar os modelos, foi definido um pipeline de dados que converte capturas
 brutas de rede em uma base consultável e amostrável em escala e que, portanto,
 condiciona a qualidade de toda a detecção. O pipeline articula três elementos
 que operam em sequência: os \textit{datasets} de origem, que combinam tráfego de
-ataque público com tráfego benigno real coletado pelo autor; a ferramenta
+ataque público com tráfego benigno real coletado pelo estudante; a ferramenta
 \textit{netflower}, responsável por converter as capturas em fluxos
 bidirecionais com \textit{features} estatísticas; e o banco SQLite, que
 consolida esses fluxos para consulta e amostragem.
@@ -414,7 +497,7 @@ descritos na Tabela~\ref{tab:datasets}.
 
 \begin{table}[ht]
 \centering
-\caption{Datasets CIC utilizados no pipeline de dados}
+\caption{Datasets CIC utilizados no pipeline de dados.}
 \label{tab:datasets}
 \begin{tabular}{@{}ll@{}}
 \toprule
@@ -426,78 +509,75 @@ CIC IIoT 2025        & Intrusões em IoT industrial \\
 \end{table}
 
 Além do tráfego benigno proveniente dos datasets públicos, a classe benigna foi
-complementada com tráfego benigno real capturado pelo próprio autor no ambiente experimental. Ao
-longo de dezenas de horas, um terminal registrou continuamente os PCAPs do uso cotidiano de um computador pessoal, incluindo tráfego de aplicações de estudo, navegação web, \textit{streaming} de vídeo, jogos, sessões SSH e atualizações de sistema, posteriormente convertidos
-em fluxos pelo \textit{netflower} e rotulados como \texttt{benign}. Esse material atua como um terceiro conjunto de tráfego benigno, com a vantagem de
-refletir o comportamento real de um host em uso interativo e não tráfego sintético. A motivação é metodológica. O tráfego benigno dos datasets CIC é
-gerado de forma \textit{scripted}, com padrões temporais regulares, ao passo que o
-tráfego interativo real apresenta características distintas, como \textit{bursts} de SSH, \textit{keepalives} HTTP e fluxos de curta duração sobre rede local rápida. Por isso, modelos treinados exclusivamente nos datasets sintéticos tendem a classificar
-erroneamente o tráfego benigno real como ataque. Misturar esse tráfego real à classe benigna reduz o desvio de distribuição entre treino e implantação.
+complementada com tráfego benigno real capturado no ambiente experimental. Ao
+longo de dezenas de horas, um terminal registrou continuamente os PCAPs do uso
+cotidiano de um computador pessoal, incluindo tráfego de aplicações de estudo,
+navegação web, \textit{streaming} de vídeo, jogos, sessões SSH e atualizações
+de sistema, posteriormente convertidos em fluxos pelo \textit{netflower} e
+rotulados como \texttt{benign}. Esse material atua como um terceiro conjunto de
+tráfego benigno, com a vantagem de refletir o comportamento real de um host em
+uso interativo e não tráfego sintético. A motivação é metodológica: o tráfego
+benigno dos datasets CIC é gerado de forma \textit{scripted}, com padrões
+temporais regulares, ao passo que o tráfego interativo real apresenta
+características distintas, como \textit{bursts} de SSH, \textit{keepalives}
+HTTP e fluxos de curta duração sobre rede local rápida. Por isso, modelos
+treinados exclusivamente nos datasets sintéticos tendem a classificar
+erroneamente o tráfego benigno real como ataque. Misturar esse tráfego real à
+classe benigna reduz o desvio de distribuição entre treino e implantação.
 
-Dada a escala dos conjuntos de dados modernos de IDS, que reúnem milhões de registros e capturas brutas da ordem de terabytes, manter os dados integralmente em memória é inviável. A estratégia de ingestão e armazenamento adotada busca, portanto, escalabilidade, reprodutibilidade e execução em hardware convencional, sem a necessidade de frameworks de computação distribuída. Cada conjunto de dados é consolidado em uma única tabela SQLite\footnote{\url{https://www.sqlite.org/}}~\cite{sqlite}, preservando a estrutura original de \textit{features} e rótulos. O SQLite foi selecionado devido à sua natureza leve, portabilidade e capacidade de realizar eficientemente agregações, contagens distintas e consultas estatísticas diretamente em disco. Durante a ingestão, as \textit{features} são automaticamente mapeadas para tipos compatíveis com o SQLite: \texttt{INTEGER} para inteiros e booleanos (dado que o SQLite não possui tipo booleano nativo), \texttt{REAL} para ponto flutuante, e \texttt{TEXT} para tipos restantes ou ambíguos. Essa estratégia de mapeamento preserva a semântica original dos dados sem afetar os objetivos analíticos do estudo. A construção do banco segue duas etapas automatizadas e reprodutíveis, cujo pipeline está disponível publicamente\footnote{\url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks/blob/main/notebooks/database_creation.ipynb}}:
+Dada a escala dos conjuntos de dados modernos de IDS, que reúnem milhões de
+registros e capturas brutas da ordem de terabytes, manter os dados
+integralmente em memória é inviável. A estratégia de ingestão e armazenamento
+adotada busca, portanto, escalabilidade, reprodutibilidade e execução em
+hardware convencional, sem a necessidade de frameworks de computação
+distribuída. Cada conjunto de dados é consolidado em uma única tabela
+SQLite\footnote{\url{https://www.sqlite.org/}}~\cite{sqlite}, preservando a
+estrutura original de \textit{features} e rótulos. O SQLite foi selecionado
+devido à sua natureza leve, portabilidade e capacidade de realizar
+eficientemente agregações, contagens distintas e consultas estatísticas
+diretamente em disco. A construção do banco segue duas etapas automatizadas e
+reprodutíveis, cujo pipeline está disponível
+publicamente\footnote{\url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks/blob/main/notebooks/database_creation.ipynb}}:
 
 \begin{enumerate}
-  \item \textbf{PCAP $\rightarrow$ CSV (\textit{Comma-Separated Values}) via netflower:} para cada pasta de categoria
-    nos datasets (e.g.\ \texttt{benign/}, \texttt{ddos/}, \texttt{malware/}), todos
-    os arquivos \texttt{.pcap}/\texttt{.pcapng} são convertidos em fluxos via
+  \item \textbf{PCAP $\rightarrow$ CSV (\textit{Comma-Separated Values}) via netflower:}
+    para cada pasta de categoria nos datasets (e.g.\ \texttt{benign/},
+    \texttt{ddos/}, \texttt{malware/}), todos os arquivos
+    \texttt{.pcap}/\texttt{.pcapng} são convertidos em fluxos via
     \texttt{convert\_pcap\_to\_csv(n\_jobs=8)}, que executa oito processos em
     paralelo particionando os pacotes por chave bidirecional determinística. O
     rótulo de cada fluxo é derivado automaticamente do nome da pasta, dispensando
-    rotulagem manual e evitando inconsistências de esquema entre as fontes. Os fluxos
-    de todos os PCAPs de uma mesma pasta são então concatenados em um único arquivo
-    \texttt{merged\_<label>.csv}.
-  \item \textbf{CSV $\rightarrow$ SQLite:} cada \texttt{merged\_*.csv} é inserido no
-    banco em \textit{chunks} de 50.000 linhas, evitando carregar o arquivo inteiro
-    em memória. Ao final, cria-se um índice sobre a coluna \texttt{label}, que
-    restringe as consultas por classe ao subconjunto relevante em vez de varrer toda
-    a tabela. Por agregar múltiplos pacotes em um único registro de fluxo e descartar
-    o detalhe pacote a pacote das capturas brutas, a representação reduz o volume em
-    disco em cerca de $5\times$: o banco resultante ocupa $\sim$190~GB, ante
-    $\sim$1~TB das PCAPs originais.
+    rotulagem manual e evitando inconsistências de esquema entre as fontes. Os
+    fluxos de todos os PCAPs de uma mesma pasta são então concatenados em um
+    único arquivo \texttt{merged\_<label>.csv}.
+  \item \textbf{CSV $\rightarrow$ SQLite:} cada \texttt{merged\_*.csv} é inserido
+    no banco em \textit{chunks} de 50.000 linhas, evitando carregar o arquivo
+    inteiro em memória. Ao final, cria-se um índice sobre a coluna
+    \texttt{label}, que restringe as consultas por classe ao subconjunto relevante
+    em vez de varrer toda a tabela. Por agregar múltiplos pacotes em um único
+    registro de fluxo e descartar o detalhe pacote a pacote das capturas brutas,
+    a representação reduz o volume em disco em cerca de $5\times$: o banco
+    resultante ocupa $\sim$190~GB, ante $\sim$1~TB das PCAPs originais.
 \end{enumerate}
 
-A Figura~\ref{fig:pipeline} resume esse fluxo de ingestão, das pastas de
-categoria à tabela única indexada por rótulo.
 
-\begin{figure}[ht]
-\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[
-  font=\footnotesize,
-  data/.style={rectangle, draw, thick, align=center, minimum height=1.0cm,
-               minimum width=1.9cm, fill=gray!8},
-  proc/.style={rectangle, rounded corners, draw, thick, align=center,
-               minimum height=1.0cm, minimum width=2.0cm, fill=gray!14},
-  arr/.style={-{Stealth[length=2.5mm]}, thick}]
-  \node[data] (pcap) {Pastas de\\categoria\\(\texttt{.pcap})};
-  \node[proc, right=0.7cm of pcap] (nf) {\textit{netflower}\\\texttt{n\_jobs=8}\\(8 \textit{workers})};
-  \node[data, right=0.7cm of nf] (csv) {\texttt{merged\_}\\\texttt{<label>.csv}};
-  \node[proc, right=0.7cm of csv] (chunk) {Inserção em\\\textit{chunks}\\(50k linhas)};
-  \node[data, right=0.7cm of chunk] (db) {SQLite\\(tabela única,\\índice em \texttt{label})};
-  \draw[arr] (pcap) -- node[above]{\scriptsize fluxos} (nf);
-  \draw[arr] (nf)   -- (csv);
-  \draw[arr] (csv)  -- (chunk);
-  \draw[arr] (chunk)-- (db);
-\end{tikzpicture}}
-\caption{Pipeline de ingestão: PCAPs convertidos pelo \textit{netflower} e consolidados em banco SQLite indexado por rótulo.}
-\label{fig:pipeline}
-\end{figure}
-
-O \textit{netflower} é uma
-ferramenta de extração de fluxos de rede desenvolvida neste trabalho, publicada no
-Python Package Index (PyPI)\footnote{\url{https://pypi.org/project/netflower/}} e
-disponível em código aberto sob licença MIT\footnote{\url{https://github.com/luiz-linkezio/netflower}}~\cite{netflower}.
-A partir de arquivos \texttt{.pcap}/\texttt{.pcapng} ou diretamente de uma interface
-de rede ao vivo, ela reconstrói fluxos bidirecionais e produz 82~\textit{features}
-compatíveis com o conjunto do CICFlowMeter\footnote{\url{https://github.com/ahlashkari/CICFlowMeter}}~\cite{cicflowmeter},
-organizadas em: identidade de fluxo
-(IPs e portas de origem/destino, protocolo, \textit{timestamp}), estatísticas de
-duração e de taxa (bytes/s e pacotes/s nos sentidos \textit{forward},
-\textit{backward} e combinado), distribuições de tamanho de pacote e de tempo
-entre chegadas (média, desvio-padrão, mínimo, máximo e variância), contagens das
-oito \textit{flags} do protocolo da camada de transporte TCP (FIN, SYN, RST, PSH, ACK, URG, ECE, CWR), períodos
+O \textit{netflower} é uma ferramenta de extração de fluxos de rede
+desenvolvida neste projeto, publicada no Python Package Index
+(PyPI)\footnote{\url{https://pypi.org/project/netflower/}} e disponível em
+código aberto sob licença
+MIT\footnote{\url{https://github.com/luiz-linkezio/netflower}}~\cite{netflower}.
+A partir de arquivos \texttt{.pcap}/\texttt{.pcapng} ou diretamente de uma
+interface de rede ao vivo, ela reconstrói fluxos bidirecionais e produz
+82~\textit{features} compatíveis com o conjunto do
+CICFlowMeter\footnote{\url{https://github.com/ahlashkari/CICFlowMeter}}~\cite{cicflowmeter},
+organizadas em: identidade de fluxo (IPs e portas de origem/destino, protocolo,
+\textit{timestamp}), estatísticas de duração e de taxa (bytes/s e pacotes/s nos
+sentidos \textit{forward}, \textit{backward} e combinado), distribuições de
+tamanho de pacote e de tempo entre chegadas (média, desvio-padrão, mínimo,
+máximo e variância), contagens das oito \textit{flags} do protocolo da camada
+de transporte TCP (FIN, SYN, RST, PSH, ACK, URG, ECE, CWR), períodos
 ativo/ocioso, métricas de \textit{bulk} e de \textit{subflow} e os tamanhos
-iniciais da janela TCP. Apenas fluxos IPv4 sobre TCP e UDP são extraídos. Os
+iniciais da janela TCP. Apenas fluxos IPv4 sobre TCP e UDP são extraídos; os
 demais protocolos são silenciosamente ignorados.
 
 A ferramenta foi projetada desde o início para execução em dispositivos de
@@ -511,14 +591,7 @@ variância em $O(1)$ sem armazenar listas de pacotes, enquanto uma coleta
 periódica de fluxos ociosos (\texttt{gc\_interval}) limita o estado residente
 mesmo sob grande número de fluxos simultâneos. A captura ao vivo acessa o
 libpcap\footnote{\url{https://www.tcpdump.org}}~\cite{libpcap} via
-\texttt{ctypes}, o que elimina dependências de compilação no nó de borda e exige
-apenas privilégio de \texttt{root} ou a \textit{capability}
-\texttt{CAP\_NET\_RAW}. Na conversão de PCAPs, a função
-\texttt{convert\_pcap\_to\_csv(n\_jobs)} particiona os pacotes por chave
-bidirecional determinística entre processos paralelos, garantindo que pacotes de
-um mesmo fluxo sejam processados pelo mesmo \textit{worker}, com escrita em CSV
-bufferizada em lote para reduzir o custo de E/S e fusão posterior em um único
-arquivo. Por fim, cada fluxo é emitido apenas ao completar, seja pelo término da
+\texttt{ctypes}, sem dependências de compilação no nó de borda. Por fim, cada fluxo é emitido apenas ao completar, seja pelo término da
 conexão (TCP FIN/RST), seja por \textit{timeout} de inatividade
 (\texttt{idle\_timeout}, padrão 30~s) ou de duração máxima
 (\texttt{flow\_timeout}, padrão 120~s), garantindo \textit{features} completas
@@ -529,22 +602,30 @@ governam a latência de detecção do IDS na captura ao vivo
 \subsection{Mapeamento de rótulos}
 \label{subsec:rotulos}
 
-Uma vez que os ataques DDoS e DoS visam exaurir recursos e seus fluxos de rede (alta taxa de pacotes, curta duração, anomalias de flags) são estatisticamente similares, manter duas classes separadas pode adicionar ruído sem ganho discriminativo significativo no classificador. Nesse sentido, após análise das distribuições das duas classes, realizou-se a unificação delas, reduzindo o espaço de classes total de 9 para 8 (7 de ataque + 1 benigno), simplificando o problema da Fase~2. Para isso, aplicou-se $\texttt{LABEL\_MAP} = \{\texttt{ddos} \rightarrow \texttt{dos}\}$ antes do treinamento.   
-
+Uma vez que os ataques DDoS e DoS visam exaurir recursos e seus fluxos de rede
+(alta taxa de pacotes, curta duração, anomalias de \textit{flags}) são
+estatisticamente similares, manter duas classes separadas pode adicionar ruído
+sem ganho discriminativo significativo no classificador. Nesse sentido, após
+análise das distribuições das duas classes, realizou-se a unificação delas,
+reduzindo o espaço de classes total de 9 para 8 (7 de ataque + 1 benigno),
+simplificando o problema da Fase~2. Para isso, aplicou-se
+$\texttt{LABEL\_MAP} = \{\texttt{ddos} \rightarrow \texttt{dos}\}$ antes do
+treinamento.
 
 Do ponto de vista do nó alvo (VIM~4), a distinção entre DoS e DDoS é de natureza
 \textit{externa} aos fluxos individuais: um ataque DoS provém de uma única fonte,
 enquanto o DDoS usa múltiplas fontes distribuídas, mas os fluxos individuais
-recebidos pelo alvo são estatisticamente indistinguíveis. A característica (feature) que capturaria
-essa diferença (diversidade de IPs de origem) exige agregação \textit{entre} fluxos
-e não está presente nas 82~features por-fluxo do \textit{netflower}. Manter as
-duas classes separadas no treinamento produziria um classificador que aprenderia a
-distingui-las por artefatos dos datasets, não por características do tráfego real
-observado pelo nó de borda. A Tabela~\ref{tab:taxonomy} apresenta a taxonomia de fluxos resultantes. 
+recebidos pelo alvo são estatisticamente indistinguíveis. A característica que
+capturaria essa diferença (diversidade de IPs de origem) exige agregação
+\textit{entre} fluxos e não está presente nas 82~\textit{features} por fluxo do
+\textit{netflower}. Manter as duas classes separadas no treinamento produziria
+um classificador que aprenderia a distingui-las por artefatos dos datasets, não
+por características do tráfego real observado pelo nó de borda. A
+Tabela~\ref{tab:taxonomy} apresenta a taxonomia de fluxos resultante.
 
 \begin{table}[ht]
 \centering
-\caption{Taxonomia de ataques utilizada no treinamento do sistema IDS}
+\caption{Taxonomia de ataques utilizada no treinamento do IDS.}
 \label{tab:taxonomy}
 \begin{tabular}{@{}ll@{}}
 \toprule
@@ -605,37 +686,52 @@ o mesmo valor em todos os fluxos, não contribuem para separar classes, atuando
 apenas como ruído constante.
 
 O resultado foram 55 \textit{features} numéricas finais. As duas de maior
-relevância pelo ganho do LightGBM foram a taxa de bytes
-por segundo (\texttt{flow\_byts\_s}) e o tempo mínimo de chegada entre pacotes (\texttt{flow\_iat\_min}),
-que capturam, respectivamente, a intensidade e o padrão temporal do tráfego.
+relevância pelo ganho do LightGBM foram a taxa de bytes por segundo
+(\texttt{flow\_byts\_s}) e o tempo mínimo de chegada entre pacotes
+(\texttt{flow\_iat\_min}), que capturam, respectivamente, a intensidade e o
+padrão temporal do tráfego.
 
-\subsection{Treinamento das Duas Fases}
+\subsection{Treinamento das duas fases}
 \label{subsec:treinamento}
+
+O treinamento ocorre sobre milhões de fluxos descritos por dezenas de
+\textit{features}, mas a inferência precisa caber no orçamento computacional de
+um nó de borda ARM, o que pede um algoritmo que combine acurácia em dados
+tabulares de alta dimensionalidade com modelos compactos e rápidos na predição.
+O LightGBM~\cite{ke:17} atende a esse perfil: é um método de \textit{gradient
+boosting} sobre árvores de decisão com crescimento folha a folha
+(\textit{leaf-wise}), que converge rapidamente e produz modelos leves o
+suficiente para inferência em dispositivos restritos. Resta o ajuste de
+hiperparâmetros, cuja busca exaustiva seria proibitiva no volume de dados
+utilizado; o Optuna~\cite{akiba:19} trata esse problema com otimização baseada
+em TPE (\textit{Tree-structured Parzen Estimator}) e poda antecipada de
+tentativas pouco promissoras, reduzindo o custo de encontrar boas configurações.
 
 As duas fases do IDS hierárquico, o classificador binário da Fase~1 e o
 multiclasse da Fase~2, foram treinadas de forma independente sobre o banco
 SQLite, mas com objetivos de otimização deliberadamente distintos, coerentes com
-o papel de cada uma na arquitetura hierárquica. A Fase~1, como filtro de primeira linha, é
-ajustada para não deixar ataques passarem, priorizando a revocação por meio do
-escore F2. A Fase~2, acionada apenas sobre fluxos já sinalizados, é ajustada para
-distribuir corretamente o tipo de ataque entre as classes, priorizando o macro
-F1. Em ambos os casos, os hiperparâmetros foram buscados automaticamente com o
-Optuna e a amostragem partiu diretamente do SQLite, garantindo balanceamento
-entre classes. As próximas subseções descrevem a configuração e os resultados
-\textit{offline} de cada fase.
+o papel de cada uma na arquitetura hierárquica. A Fase~1, como filtro de
+primeira linha, é ajustada para não deixar ataques passarem, priorizando a
+revocação por meio do escore F2. A Fase~2, acionada apenas sobre fluxos já
+sinalizados, é ajustada para distribuir corretamente o tipo de ataque entre as
+classes, priorizando o macro F1. Em ambos os casos, os hiperparâmetros foram
+buscados automaticamente com o Optuna e a amostragem partiu diretamente do
+SQLite, garantindo balanceamento entre classes. O treinamento foi executado em
+CPU no PC descrito na Seção~\ref{subsec:validacao}, e as próximas subseções
+descrevem a configuração e os resultados \textit{offline} de cada fase.
 
-\subsubsection{Fase 1 — Classificador Binário}
+\subsubsection{Fase 1: classificador binário}
 
 O classificador binário da Fase~1 foi treinado sobre 615.317 fluxos
 benignos e os 554.795 fluxos de ataque disponíveis; após a remoção de fluxos
 duplicados, restaram 703.558 registros, com divisão estratificada de 80/20 entre
-treino e teste. Tanto os
-hiperparâmetros quanto o limiar de decisão foram otimizados conjuntamente pelo
-Optuna (20 tentativas, 1.800~s de \textit{timeout}), tendo o escore F2 como
-objetivo. A escolha do F2 é deliberada, pois ele pondera a revocação quatro vezes
-mais que a precisão, refletindo que, em um IDS (e não em um Sistema de Prevenção
-de Intrusão, IPS), um falso negativo (um ataque não detectado) é mais custoso que
-um falso positivo (um alarme indevido).
+treino e teste. Tanto os hiperparâmetros quanto o limiar de decisão foram
+otimizados conjuntamente pelo Optuna (20 tentativas, 1.800~s de
+\textit{timeout}), tendo o escore F2 como objetivo. A escolha do F2 é
+deliberada, pois ele pondera a revocação quatro vezes mais que a precisão,
+refletindo que, em um IDS (e não em um Sistema de Prevenção de Intrusão, IPS),
+um falso negativo (um ataque não detectado) é mais custoso que um falso positivo
+(um alarme indevido).
 
 A Tabela~\ref{tab:phase1_offline} apresenta a avaliação no conjunto de teste
 (140.712 fluxos) ao limiar ótimo de 0,157. O resultado evidencia o efeito desse
@@ -653,7 +749,7 @@ substancialmente maior e um volume de falsos positivos próximo de zero
 
 \begin{table}[ht]
 \centering
-\caption{Avaliação offline da Fase~1 — conjunto de teste (limiar ótimo = 0,157).}
+\caption{Avaliação \textit{offline} da Fase~1 no conjunto de teste (limiar ótimo = 0,157).}
 \label{tab:phase1_offline}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
@@ -666,7 +762,7 @@ Macro avg & 0,82 & 0,83 & 0,80 & \\
 \end{tabular}
 \end{table}
 
-\subsubsection{Fase 2 — Classificador Multiclasse}
+\subsubsection{Fase 2: classificador multiclasse}
 
 O classificador multiclasse da Fase~2 foi treinado a partir de uma
 amostragem independente de até 615.317 linhas por classe extraídas diretamente do
@@ -677,22 +773,22 @@ portanto, penaliza explicitamente o mau desempenho nas classes minoritárias.
 
 A Tabela~\ref{tab:phase2_offline} reporta o desempenho por classe no conjunto de
 teste (317.381 fluxos). Já em avaliação \textit{offline} emerge o padrão que se
-acentuará na validação no \textit{testbed}: a classe \texttt{dos} é classificada de forma
-quase perfeita (F1 = 0,98), enquanto as classes de fluxo curto e baixa amostragem
-\texttt{bruteforce}, \texttt{spoofing} e \texttt{mitm} apresentam precisão baixa
-(0,20, 0,28 e 0,42), revelando confusão sistemática com as demais. A revocação
-relativamente alta dessas classes minoritárias (0,72 a 0,77) é efeito direto do
-\texttt{class\_weight=balanced}, que força o modelo a não ignorá-las, mas o macro
-F1 de 0,67 confirma que a separação entre os tipos de ataque é desigual: o sinal
-por-fluxo distingue bem ataques de assinatura peculiar e mal os de comportamento
-semelhante a inundação. Na prática, isso significa que o rótulo de tipo emitido
-pela Fase~2 é confiável para varreduras e inundações, mas ainda não para força
-bruta, \textit{spoofing} e MITM, cuja triagem segue dependendo do alerta binário
-da Fase~1.
+acentuará na validação no \textit{testbed}: a classe \texttt{dos} é classificada
+de forma quase perfeita (F1 = 0,98), enquanto as classes de fluxo curto e baixa
+amostragem \texttt{bruteforce}, \texttt{spoofing} e \texttt{mitm} apresentam
+precisão baixa (0,20, 0,28 e 0,42), revelando confusão sistemática com as
+demais. A revocação relativamente alta dessas classes minoritárias (0,72 a
+0,77) é efeito direto do \texttt{class\_weight=balanced}, que força o modelo a
+não ignorá-las, mas o macro F1 de 0,67 confirma que a separação entre os tipos
+de ataque é desigual: o sinal por fluxo distingue bem ataques de assinatura
+peculiar e mal os de comportamento semelhante a inundação. Na prática, isso
+significa que o rótulo de tipo emitido pela Fase~2 é confiável para varreduras
+e inundações, mas ainda não para força bruta, \textit{spoofing} e MITM, cuja
+triagem segue dependendo do alerta binário da Fase~1.
 
 \begin{table}[ht]
 \centering
-\caption{Avaliação offline da Fase~2 por classe — conjunto de teste.}
+\caption{Avaliação \textit{offline} da Fase~2 por classe no conjunto de teste.}
 \label{tab:phase2_offline}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
@@ -711,6 +807,23 @@ Macro F1    & & & \textbf{0,67} & \\
 \end{tabular}
 \end{table}
 
+\subsubsection{Exploração preliminar de uma terceira fase}
+\label{subsubsec:fase3}
+
+A concepção original da arquitetura previa uma terceira fase, de agrupamento
+não supervisionado, para os fluxos que a Fase~2 classifica com baixa confiança,
+candidatos a ameaças desconhecidas. Essa fase foi explorada apenas
+\textit{offline}, sobre o conjunto de teste da Fase~2: os 42.527 fluxos (13,4\%
+do total) cuja confiança máxima ficou abaixo de 0,4 foram projetados pelo
+UMAP~\cite{mcinnes:18} em 10 dimensões (\texttt{n\_neighbors} = 30,
+\texttt{min\_dist} = 0) e agrupados pelo HDBSCAN~\cite{mcinnes:17}
+(\texttt{min\_cluster\_size} = 100, \texttt{min\_samples} = 50), que encontrou
+84 grupos e marcou 4,7\% dos fluxos como ruído. Os modelos resultantes estão
+versionados no repositório do projeto, mas a fase não foi integrada ao IDS
+implantado no nó de borda nem avaliada no \textit{testbed}; sua caracterização
+(a que ataques os grupos correspondem e se de fato isolam tráfego inédito)
+permanece como trabalho futuro.
+
 \subsection{Validação no \textit{testbed}: ambiente, ferramentas e protocolo}
 \label{subsec:validacao}
 
@@ -723,9 +836,9 @@ interface de rede \texttt{eth0}, alvo de todos os ataques. A rede local Gigabit
 isolada faz as vezes do enlace de acesso do cenário MEC alvo; como o IDS decide
 sobre fluxos IP reconstruídos acima da camada de acesso
 (Seção~\ref{subsec:pipeline}), essa substituição não altera a representação de
-tráfego vista pelo detector. O treinamento do LightGBM
-foi executado em CPU (8 \textit{threads}), e os modelos treinados foram copiados para
-a VIM~4 para inferência.
+tráfego vista pelo detector. O treinamento do LightGBM foi executado em CPU
+(8 \textit{threads}), e os modelos treinados foram copiados para a VIM~4 para
+inferência.
 
 A VIM~4\footnote{\url{https://www.khadas.com/vim4}} foi escolhida como nó de
 borda por reunir, em um computador de placa única de baixo custo, os atributos
@@ -737,12 +850,7 @@ atendem às tarefas leves com consumo reduzido, mantendo a placa em um envelope
 de potência de 2,5 a 9~W, uma fração do consumo de um servidor convencional e
 compatível com implantação em pontos de acesso com alimentação restrita. Os
 8~GB de RAM LPDDR4x dão margem para os modelos das duas fases residirem em
-memória simultaneamente. Em conectividade, além da Gigabit Ethernet usada nos
-experimentos, a placa oferece Wi-Fi~6, Bluetooth~5.1, USB~3.0 e GPIO de 40
-pinos, o que permite agregar sensores e enlaces heterogêneos típicos de
-ambientes IoT. Por fim, o suporte oficial a Ubuntu Linux e a Android amplia o
-reuso do mesmo hardware em outros papéis, de \textit{gateway} IoT a plataforma
-de aplicações Android embarcadas, reforçando o custo-benefício da escolha.
+memória simultaneamente.
 
 \begin{figure}[ht]
 \centering
@@ -857,7 +965,7 @@ de aplicações Android embarcadas, reforçando o custo-benefício da escolha.
   % tráfego de ataque: sai do gerador de ataques direto para o IDS da VIM
   \draw[attackarr] (atk.east) --
         node[pos=0.5, below=3pt, align=center, font=\scriptsize, text=black]
-        {ataques (8 categorias)\\\texttt{192.168.100.5}}
+        {ataques (8 categorias)\\\texttt{192.168.100.13}}
         (idsbox.west);
   % coleta de log: ids\_metrics.py busca o log do IDS na VIM 4 via SSH
   \draw[collectarr] (idslog.west) -- ++(-0.7,0) |- (metrics.east);
@@ -870,7 +978,7 @@ de aplicações Android embarcadas, reforçando o custo-benefício da escolha.
 
 \begin{table}[ht]
 \centering
-\caption{Especificações do hardware utilizado}
+\caption{Especificações do hardware utilizado.}
 \label{tab:hardware}
 \begin{tabular}{@{}lll@{}}
 \toprule
@@ -880,8 +988,8 @@ SoC / CPU & AMD Ryzen 5 7600 (6c/12t) & Amlogic A311D2 \\
           &                            & + 4$\times$ Cortex-A53 @ 1,8~GHz \\
 GPU       & NVIDIA RTX 5070 (16~GB)    & Mali-G52 MP8 \\
 RAM       & 2$\times$16~GB DDR5 5600~MHz & 8~GB LPDDR4x \\
-Placa-mãe & Asus TUF Gaming B650 Plus WiFi & — \\
-Fonte     & MSI A750GF (750~W, 80+ Gold) & — \\
+Placa-mãe & Asus TUF Gaming B650 Plus WiFi & --- \\
+Fonte     & MSI A750GF (750~W, 80+ Gold) & --- \\
 Rede      & Gigabit Ethernet           & Gigabit Ethernet \\
 \bottomrule
 \end{tabular}
@@ -910,78 +1018,75 @@ Para executar as 8 categorias de ataque, o gerador emprega as seguintes
 ferramentas:
 
 \begin{itemize}
-  \item \textbf{nmap}\footnote{\url{https://nmap.org}}~\cite{nmap} — varredura de
+  \item \textbf{nmap}\footnote{\url{https://nmap.org}}~\cite{nmap}: varredura de
     rede: SYN scan (\texttt{-sS}), UDP scan dos 100 top ports (\texttt{-sU}),
     varredura agressiva (\texttt{-A});
-  \item \textbf{masscan}\footnote{\url{https://github.com/robertdavidgraham/masscan}}~\cite{masscan}
-    — varredura SYN de alta velocidade;
-  \item \textbf{hping3}\footnote{\url{http://www.hping.org}}~\cite{hping3} —
+  \item \textbf{masscan}\footnote{\url{https://github.com/robertdavidgraham/masscan}}~\cite{masscan}:
+    varredura SYN de alta velocidade;
+  \item \textbf{hping3}\footnote{\url{http://www.hping.org}}~\cite{hping3}:
     geração de inundação: SYN flood (porta 80), UDP flood (porta 53), ICMP flood;
     DDoS com fonte aleatória (\texttt{--rand-source}) nas portas 443 e 80;
     spoofing com fonte forjada fixa (\texttt{-a});
-  \item \textbf{medusa}\footnote{\url{https://github.com/jmk-foofus/medusa}}~\cite{medusa}
-    — força bruta de credenciais: SSH (root), HTTP (admin), Telnet (root);
-  \item \textbf{nikto}\footnote{\url{https://github.com/sullo/nikto}}~\cite{nikto}
-    — varredura de vulnerabilidades web;
-  \item \textbf{gobuster}\footnote{\url{https://github.com/OJ/gobuster}}~\cite{gobuster}
-    — enumeração de diretórios/caminhos HTTP;
-  \item \textbf{curl}\footnote{\url{https://curl.se}}~\cite{curl} — inundação HTTP
+  \item \textbf{medusa}\footnote{\url{https://github.com/jmk-foofus/medusa}}~\cite{medusa}:
+    força bruta de credenciais: SSH (root), HTTP (admin), Telnet (root);
+  \item \textbf{nikto}\footnote{\url{https://github.com/sullo/nikto}}~\cite{nikto}:
+    varredura de vulnerabilidades web;
+  \item \textbf{gobuster}\footnote{\url{https://github.com/OJ/gobuster}}~\cite{gobuster}:
+    enumeração de diretórios/caminhos HTTP;
+  \item \textbf{curl}\footnote{\url{https://curl.se}}~\cite{curl}: inundação HTTP
     (100 requisições em paralelo);
-  \item \textbf{arpspoof} (suíte \textit{dsniff})\footnote{\url{https://www.monkey.org/~dugsong/dsniff/}}~\cite{dsniff}
-    — envenenamento ARP bidirecional (ataque MITM), com tráfego forçado pela rota
+  \item \textbf{arpspoof} (suíte \textit{dsniff})\footnote{\url{https://www.monkey.org/~dugsong/dsniff/}}~\cite{dsniff}:
+    envenenamento ARP bidirecional (ataque MITM), com tráfego forçado pela rota
     envenenada;
-  \item \textbf{nc} (netcat)\footnote{\url{https://nmap.org/ncat/}}~\cite{ncat} —
+  \item \textbf{nc} (netcat)\footnote{\url{https://nmap.org/ncat/}}~\cite{ncat}:
     beacon C2 simulado via TCP porta~4444 (100 conexões curtas).
 \end{itemize}
 
-Os dois pipelines são avaliados em duas sessões
-sequenciais sob o mesmo roteiro: a Sessão~A apenas com o IDS binário e a Sessão~B
-com o binário+multiclasse, o que dá atribuição limpa de recursos a cada pipeline
-e janelas de \textit{ground truth} estruturalmente idênticas. Cada sessão inclui
-60~s de baseline benigno antes e depois dos ataques e 120~s de intervalo
-ocioso entre ataques consecutivos, para que os fluxos de cada ataque drenem
-antes da janela seguinte (motivado pela saturação do extrator sob \textit{flood},
-discutida na Seção~\ref{subsec:res_artefatos}). Os ataques visam \texttt{192.168.100.5}
-(VIM~4), com sincronização por \textit{offset} de 3~h de BRT para UTC; limiar
-de detecção binária $P_1 \geq 0{,}9$; \textit{netflower} com \texttt{idle\_timeout}
-= 30~s e \texttt{flow\_timeout} = 120~s. A captura PCAP no atacante foi
-deliberadamente desativada: as métricas derivam do log do IDS (alertas + amostras
-periódicas de sistema) e das janelas temporais do relatório do gerador de ataques, não
-dos PCAPs, que, sob os \textit{floods}, chegavam a vários GB sem valor analítico.
+Os dois pipelines são avaliados em duas sessões sequenciais sob o mesmo
+roteiro: a Sessão~A apenas com o IDS binário e a Sessão~B com o
+binário+multiclasse, o que dá atribuição limpa de recursos a cada pipeline e
+janelas de \textit{ground truth} estruturalmente idênticas. Cada sessão inclui
+60~s de baseline benigno antes e depois dos ataques e 120~s de intervalo ocioso
+entre ataques consecutivos, para que os fluxos de cada ataque drenem antes da
+janela seguinte (motivado pela saturação do extrator sob \textit{flood},
+discutida na Seção~\ref{subsec:res_artefatos}). Os ataques visam
+\texttt{192.168.100.13} (VIM~4), com sincronização por \textit{offset} de 3~h de
+BRT para UTC; limiar de detecção binária $P_1 \geq 0{,}9$; \textit{netflower}
+com \texttt{idle\_timeout} = 30~s e \texttt{flow\_timeout} = 120~s. A captura
+PCAP no atacante foi deliberadamente desativada: as métricas derivam do log do
+IDS (alertas + amostras periódicas de sistema) e das janelas temporais do
+relatório do gerador de ataques, não dos PCAPs, que, sob os \textit{floods},
+chegavam a vários GB sem valor analítico.
 
-A detecção é avaliada por duas atribuições complementares. A \textbf{por identidade
-de fluxo} rotula cada fluxo alertado pela sua 5-tupla, independentemente de
-\emph{quando} o IDS o emitiu: no \textit{testbed} isolado, um fluxo é ataque quando
-envolve o atacante ou um \textit{flood} de origem forjada à vítima, e falso positivo
-apenas quando é tráfego legítimo de infraestrutura; isso produz precisão e falsos
-positivos imunes ao instante de emissão. A \textbf{por janela de segundo} rotula
-cada segundo como ``ataque'' se cai em alguma janela (estendida por
-\texttt{idle\_slack} = 90~s, que absorve o rastro de emissão atrasada dos
-\textit{floods}) e ``benigno'' caso contrário; é necessária para estimar cobertura
-(revocação/FNR), mas herda o atraso de emissão, então sua precisão e o FPR global
-são reportados à parte, como contaminados pelo artefato. O FPR limpo é medido apenas
-sobre o baseline benigno \textit{pré-ataque}. A avaliação multiclasse mapeia cada
-alerta à sua janela e compara o tipo previsto ao verdadeiro. CPU, RAM e
-\textit{throughput} derivam das amostras periódicas do log; a energia segue um
-modelo linear de CPU calibrado, detalhado na Seção~\ref{subsec:res_comp}.
+A detecção é avaliada \emph{por fluxo}: cada fluxo classificado pelo IDS é
+rotulado como ataque ou benigno segundo a janela de \textit{ground truth} em que
+\emph{começou} (\texttt{flow\_ts}, o instante de captura do primeiro pacote no
+cabeçalho do PCAP), e nunca segundo o instante em que o alerta foi emitido. A
+escolha é deliberada: sob \textit{flood}, o nó ARM satura e emite os fluxos com
+atraso mediano de 163--216~s (Seção~\ref{subsec:res_artefatos}), de modo que
+qualquer métrica ancorada na emissão, inclusive a contagem por segundo,
+contamina segundos e janelas vizinhos. Rotulando pelo início do fluxo, o atraso
+torna-se irrelevante para a detecção. Um filtro de \textit{endpoints} distingue
+o tráfego de fundo (multicast, outros \textit{hosts} da LAN, serviços da própria
+VIM) do tráfego de ataque, para que fluxos benignos que caem numa janela contem
+como benignos. Reportam-se duas definições da janela: a \textbf{estrita}, com os
+instantes registrados pelo orquestrador, e a \textbf{calibrada} ($+2$~s), que os
+alarga em 2~s de cada lado para corrigir a defasagem de registro do orquestrador
+(que grava o \texttt{start\_time} depois de já ter disparado a ferramenta, de
+modo que os primeiros fluxos de ataque começam até $\sim$2~s antes do instante
+anotado). A calibração continua rotulando pelo \texttt{flow\_ts}. A avaliação
+multiclasse prevê o tipo da Fase~2 quando a Fase~1 alerta, e benigno caso
+contrário. CPU, RAM e \textit{throughput} derivam das amostras periódicas do
+log; a energia segue um modelo linear de CPU calibrado, detalhado na
+Seção~\ref{subsec:res_comp}.
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Resultados}
-\label{sec:resultados}
+\subsection{Métricas de avaliação}
+\label{subsec:metricas}
 
-Esta seção apresenta os resultados da validação no \textit{testbed} no VIM~4, cujo ambiente,
-organização do experimento e protocolo foram descritos na
-Seção~\ref{subsec:validacao}. A exposição segue do particular ao geral: primeiro
-avaliam-se as duas fases isoladamente, o IDS binário da Fase~1
-(Seção~\ref{subsec:res_bin}) e o IDS multiclasse das Fases~1+2
-(Seção~\ref{subsec:res_multi}). Em seguida, caracterizam-se os artefatos de
-implantação que condicionam esses números (Seção~\ref{subsec:res_artefatos}). Por fim, confrontam-se os dois pipelines em uma comparação direta de desempenho de detecção e consumo de recursos, \textit{throughput} e energia (Seção~\ref{subsec:res_comp}).
-
-Antes dos números, convém precisar a semântica das métricas reportadas e por que
-são adequadas a um IDS. Nas equações a seguir, TP, FP, TN e FN denotam,
-respectivamente, os verdadeiros positivos, falsos positivos, verdadeiros
-negativos e falsos negativos. A precisão é a fração de alertas que correspondem
-a ataques reais,
+Convém precisar a semântica das métricas reportadas e por que são adequadas a
+um IDS. Nas equações a seguir, TP, FP, TN e FN denotam, respectivamente, os
+verdadeiros positivos, falsos positivos, verdadeiros negativos e falsos
+negativos. A precisão é a fração de alertas que correspondem a ataques reais,
 \begin{equation}
 \text{Precisão} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}},
 \label{eq:precisao}
@@ -1000,25 +1105,44 @@ ambas o são:
 \mathrm{F1} = 2 \times \frac{\text{Precisão} \times \text{Revocação}}{\text{Precisão} + \text{Revocação}}.
 \label{eq:f1}
 \end{equation}
-A taxa de falsos positivos (\textit{False Positive Rate}, FPR) é a fração de
-tráfego benigno classificado como ataque,
+A taxa de falsos positivos (FPR) é a fração de tráfego benigno classificado
+como ataque,
 \begin{equation}
 \mathrm{FPR} = \frac{\mathrm{FP}}{\mathrm{FP} + \mathrm{TN}},
 \label{eq:fpr}
 \end{equation}
 que em um IDS é crítica, pois um FPR alto inviabiliza a operação ao afogar a
-equipe em alarmes sobre tráfego legítimo. A taxa de falsos negativos
-(\textit{False Negative Rate}, FNR) mede o complemento, os ataques perdidos:
+equipe em alarmes sobre tráfego legítimo. A taxa de falsos negativos (FNR) mede
+o complemento, os ataques perdidos:
 \begin{equation}
 \mathrm{FNR} = \frac{\mathrm{FN}}{\mathrm{FN} + \mathrm{TP}} = 1 - \text{Revocação}.
 \label{eq:fnr}
 \end{equation}
 Como num IDS um ataque não detectado é mais custoso que um alarme indevido, este
-trabalho privilegia revocação e baixo FPR, e usa F1 e macro F1 (média do
-F1 por classe, que dá peso igual a classes raras) para avaliar o equilíbrio entre
-os tipos de ataque na Fase~2.
+trabalho privilegia revocação e baixo FPR, e usa F1 e macro F1 (média do F1 por
+classe, que dá peso igual a classes raras) para avaliar o equilíbrio entre os
+tipos de ataque na Fase~2. O escore F2 usado no treinamento da Fase~1 é a
+generalização do F1 que pondera a revocação quatro vezes mais que a precisão.
 
-\subsection{IDS Binário (Fase 1)}
+% ============================================================================
+\section{APRESENTAÇÃO E DISCUSSÃO OBJETIVA DOS RESULTADOS OBTIDOS}
+\label{sec:resultados}
+
+Esta seção apresenta os resultados da validação no \textit{testbed} no VIM~4,
+cujo ambiente, organização do experimento e protocolo foram descritos na
+Seção~\ref{subsec:validacao}, com as métricas definidas na
+Seção~\ref{subsec:metricas}. A exposição segue do particular ao geral: primeiro
+avaliam-se as duas fases isoladamente, o IDS binário da Fase~1
+(Seção~\ref{subsec:res_bin}) e o IDS multiclasse das Fases~1+2
+(Seção~\ref{subsec:res_multi}). Em seguida, caracterizam-se os artefatos de
+implantação que condicionam esses números (Seção~\ref{subsec:res_artefatos}).
+Por fim, confrontam-se os dois pipelines em uma comparação direta de desempenho
+de detecção e consumo de recursos, \textit{throughput} e energia
+(Seção~\ref{subsec:res_comp}). Todos os números derivam de uma única execução
+de cada sessão (rodada \texttt{20260929\_144008}), com os modelos treinados na
+Seção~\ref{subsec:treinamento} e sem retreino.
+
+\subsection{IDS binário (Fase 1)}
 \label{subsec:res_bin}
 
 A Tabela~\ref{tab:bin_metrics} resume o IDS binário (Fase~1) sob a métrica
@@ -1032,31 +1156,29 @@ métrica ancorada na emissão contamina segundos e janelas vizinhas. Rotulando
 pelo início do fluxo, esse atraso torna-se irrelevante para a detecção.
 
 Reportam-se duas definições da janela de \textit{ground truth}. A
-\textbf{estrita} usa os instantes de início e fim registrados pelo orquestrador.
-A \textbf{calibrada} ($+2$~s) alarga cada janela em 2~s de cada lado para
-corrigir uma defasagem sistemática: o orquestrador grava o \texttt{start\_time}
+\textbf{estrita} usa os instantes registrados pelo orquestrador. A
+\textbf{calibrada} ($+2$~s) alarga cada janela em 2~s de cada lado para corrigir
+uma defasagem sistemática: o orquestrador grava o \texttt{start\_time}
 \emph{depois} de já ter disparado a ferramenta de ataque, de modo que os
-primeiros fluxos de ataque começam até $\sim$2~s antes do instante anotado. Sob
-a janela estrita, esses fluxos, todos oriundos do atacante ou de origem
+primeiros fluxos de ataque começam até $\sim$2~s antes do instante anotado. Sob a
+janela estrita, esses fluxos, todos oriundos do atacante ou de origem
 forjada, caem fora da janela e são contados como falsos positivos, embora
 sejam ataque real: 88\% dos ``falsos positivos'' são exatamente isso, e a folga
-de $+2$~s os reabsorve por completo (a correção satura em 2~s, idêntica a $+3$ e
-$+5$~s). A calibração continua rotulando pelo \texttt{flow\_ts}, sem reintroduzir
-hora de emissão.
+de $+2$~s os reabsorve por completo (a correção satura em 2~s). A calibração
+continua rotulando pelo \texttt{flow\_ts}, sem reintroduzir hora de emissão.
 
 Sob a janela calibrada, o detector alcança precisão de 0,986, revocação de 0,809
 e F1 de 0,889. Sob a janela estrita, são 0,890, 0,792 e 0,838 (Tabela~\ref{tab:bin_metrics}).
 A \emph{precisão} é a métrica de especificidade confiável neste \textit{testbed}:
 como a captura é dominada por \textit{flood} ($\sim$99\% dos fluxos são ataque), o
 tráfego genuinamente benigno soma apenas algumas centenas de fluxos, e o FPR
-(0,607 calibrado; 0,926 estrito) herda um denominador minúsculo e ruidoso, não
-comparável a um FPR medido sobre um \textit{baseline} benigno limpo. A matriz de
-confusão da Tabela~\ref{tab:bin_cm} apresenta os dois regimes lado a lado.
+(0,607 calibrado, 0,926 estrito) herda um denominador minúsculo e ruidoso, não
+comparável a um FPR medido sobre um \textit{baseline} benigno limpo.
 
 \begin{table}[ht]
 \centering
 \caption{Matriz de confusão por fluxo do IDS binário (limiar = 0,9), sob janela
-estrita e janela calibrada ($+2$~s).}
+estrita e calibrada ($+2$~s).}
 \label{tab:bin_cm}
 \begin{tabular}{@{}llrr@{}}
 \toprule
@@ -1072,10 +1194,9 @@ estrita e janela calibrada ($+2$~s).}
 \begin{table}[ht]
 \centering
 \caption{Métricas por fluxo do IDS binário no \textit{testbed} (limiar = 0,9),
-sob janela de \textit{ground truth} estrita e calibrada ($+2$~s, corrige a
-defasagem de registro do orquestrador). A precisão é a métrica de especificidade
-confiável; o FPR tem denominador diminuto (poucas centenas de fluxos benignos em
-captura saturada de \textit{flood}).}
+sob janela de \textit{ground truth} estrita e calibrada ($+2$~s). A precisão é a
+métrica de especificidade confiável. O FPR tem denominador diminuto (poucas
+centenas de fluxos benignos em captura saturada de \textit{flood}).}
 \label{tab:bin_metrics}
 \begin{tabular}{@{}lrr@{}}
 \toprule
@@ -1090,16 +1211,13 @@ FNR                 & 0,208 & 0,191 \\
 \end{tabular}
 \end{table}
 
-
-
 A revocação não se distribui por igual entre os ataques
 (Figura~\ref{fig:detection_rate}, janela calibrada). As inundações volumétricas
 são detectadas de forma robusta (\textit{spoofing} com 100\% dos fluxos e DoS
 com 84\%), enquanto o DDoS cai a 47\%, refletindo a saturação do nó sob a
 maior taxa de pacotes. O \textit{recon} atinge 58\%: o \textit{scan} do nmap
 emite poucos pacotes por porta, que não acumulam \textit{features} suficientes
-antes de o fluxo expirar (\texttt{idle\_timeout} de 30~s), e o ataque, embora em
-curso, permanece parcialmente invisível ao detector. Três categorias mal se
+antes de o fluxo expirar (\texttt{idle\_timeout} de 30~s). Três categorias mal se
 manifestam no \textit{testbed}: força bruta (26 fluxos) e MITM (4 fluxos) geraram
 tráfego insuficiente para avaliação e não foram detectadas, o \textit{web} foi
 majoritariamente perdido (3\% dos fluxos) e o \textit{malware} não gerou nenhum
@@ -1134,21 +1252,21 @@ uma segunda fase de estado agregado, discutida adiante, precisaria capturar.
   (57.8,recon) (84.0,dos) (100.0,spoofing)};
 \end{axis}
 \end{tikzpicture}
-\caption{Revocação por fluxo por tipo de ataque — IDS binário, janela calibrada
+\caption{Revocação por fluxo por tipo de ataque, IDS binário, janela calibrada
 $+2$~s. Força bruta (26 fluxos) e MITM (4 fluxos) geraram tráfego insuficiente e
 não foram detectados; \textit{malware} não gerou fluxos direcionados ao alvo e é
 omitido. \textit{web} conta com servidor HTTP real como alvo.}
 \label{fig:detection_rate}
 \end{figure}
 
-\subsection{IDS Multiclasse (Fases 1+2)}
+\subsection{IDS multiclasse (Fases 1+2)}
 \label{subsec:res_multi}
 
 Nem todas as oito classes geraram tráfego suficiente para uma avaliação de tipo.
 As inundações volumétricas (DoS, DDoS e \textit{spoofing}) e o \textit{recon}
-dominam os fluxos. Força bruta (8 fluxos), MITM (3) e \textit{malware} (0)
-mal se manifestaram, pelas razões de baixo volume da Seção~\ref{subsec:res_bin}.
-Como as janelas de cada ataque foram isoladas por 120~s de intervalo ocioso, os
+dominam os fluxos. Força bruta (8 fluxos), MITM (3) e \textit{malware} (0) mal se
+manifestaram, pelas razões de baixo volume da Seção~\ref{subsec:res_bin}. Como as
+janelas de cada ataque foram isoladas por 120~s de intervalo ocioso, os
 resultados por classe são atribuíveis ao comportamento de cada ataque, e não a
 sobreposição temporal entre janelas.
 
@@ -1164,7 +1282,6 @@ que a Fase~1 de fato detectou, a acurácia de tipo sobe para 63\%. Na prática, 
 rótulo de tipo distingue varreduras de reconhecimento, mas não separa os demais
 ataques de uma inundação genérica, o que mantém a triagem dependente do alerta
 binário da Fase~1 nesses casos.
-
 
 \begin{table}[ht]
 \centering
@@ -1222,13 +1339,12 @@ bem separado, enquanto \texttt{web}, \texttt{bruteforce}, \texttt{mitm} e
 \label{fig:multi_f1}
 \end{figure}
 
-
 Esse colapso tem duas causas que se somam. A primeira é a limitação do próprio
 espaço de \textit{features}: no vetor de 55 atributos por fluxo, ataques de
 fluxos curtos e de alta taxa tornam-se estatisticamente indistinguíveis de uma
 inundação. Para \texttt{spoofing}, classificar como \texttt{dos} é inclusive a
-resposta correta, já que se trata de um \textit{flood} com origem forjada;
-separar os demais exigiria estado agregado entre fluxos, como contadores de falha
+resposta correta, já que se trata de um \textit{flood} com origem forjada.
+Separar os demais exigiria estado agregado entre fluxos, como contadores de falha
 de autenticação ou a diversidade de IPs de origem, ausentes por construção das
 \textit{features} por fluxo. A segunda causa, para \texttt{web},
 \texttt{bruteforce} e \texttt{mitm}, é a combinação de baixo volume com o desvio
@@ -1240,7 +1356,7 @@ manifestaram), o que impede uma avaliação robusta do tipo. Fazê-la de forma
 realista exigiria serviços e vítimas reais, com tráfego sustentado, no ambiente
 de implantação, limitação registrada nos trabalhos futuros.
 
-\subsection{Desvio de Distribuição e Artefatos de Implantação}
+\subsection{Desvio de distribuição e artefatos de implantação}
 \label{subsec:res_artefatos}
 
 Três fenômenos de implantação, ausentes de avaliações puramente \textit{offline},
@@ -1268,7 +1384,7 @@ características distintas que o modelo classificava como ataque. As duas
 no ambiente real parece anômalo ao modelo; do mesmo modo, fluxos curtos sobre
 rede local rápida produzem \texttt{flow\_byts\_s} muito acima do observado no
 treino. Embora tráfego benigno real já tenha sido incorporado ao treino
-(Seção~\ref{sec:metodologia}), o desvio residual indica que a solução mais
+(Seção~\ref{subsec:pipeline}), o desvio residual indica que a solução mais
 completa é capturá-lo no próprio ambiente de implantação, a rede do VIM~4.
 
 O terceiro fenômeno é um artefato do \textit{netflower}: cada encerramento de
@@ -1280,19 +1396,26 @@ ataque, uma fonte de falsos positivos que independe do tráfego real. A mitigaç
 é uma guarda de pacote mínimo (\texttt{tot\_fwd\_pkts} $\geq 2$) no script do
 IDS, que descarta esses micro-fluxos antes da inferência.
 
-\subsection{Comparação entre IDS Binário e IDS Multiclasse}
+\subsection{Comparação entre IDS binário e IDS multiclasse}
 \label{subsec:res_comp}
+
 A Tabela~\ref{tab:comparison} consolida a comparação entre os dois pipelines
-testados no VIM~4. As duas sessões usam o mesmo modelo de Fase~1 e o mesmo roteiro de ataques, mas são execuções independentes: cada uma gera seu próprio tráfego de ataque, de modo que as métricas de detecção binária diferem entre elas (a Seção~\ref{subsec:res_bin} as mede de forma dedicada). Adicionalmente, como a VIM~4 não expõe interfaces de telemetria de energia em software (RAPL, \textit{Running Average Power Limit}, ou o sensor INA226), adota-se uma estimativa calibrada e não medição direta. O método e suas limitações são descritos ao final desta seção.
+testados no VIM~4. As duas sessões usam o mesmo modelo de Fase~1 e o mesmo
+roteiro de ataques, mas geram tráfego de ataque próprio, por isso as métricas de
+Fase~1 diferem entre elas (a Seção~\ref{subsec:res_bin} mede a Sessão~A de forma
+dedicada). Adicionalmente, como a VIM~4 não expõe interfaces de
+telemetria de energia em software (RAPL, \textit{Running Average Power Limit},
+ou o sensor INA226), adota-se uma estimativa calibrada e não medição direta. O
+método e suas limitações são descritos ao final desta seção.
 
 \begin{table}[ht]
 \centering
 \caption{Comparação dos dois pipelines avaliados no VIM~4: binário (Fase~1) vs.\
-hierárquico completo (Fases~1+2). As colunas são as duas sessões independentes de
-\textit{testbed}, que compartilham o modelo de Fase~1 mas geram tráfego de ataque
-próprio, por isso as métricas de Fase~1 diferem. $^\dagger$O FPR tem denominador
-diminuto (poucas centenas de fluxos benignos em captura saturada de \textit{flood});
-a precisão é a métrica de especificidade confiável (Seção~\ref{subsec:res_bin}).}
+hierárquico completo (Fases~1+2). As colunas são as duas sessões independentes,
+que compartilham o modelo de Fase~1 mas geram tráfego próprio, por isso as
+métricas de Fase~1 diferem. $^\dagger$O FPR tem denominador diminuto (poucas
+centenas de fluxos benignos em captura saturada de \textit{flood}). A precisão é
+a métrica de especificidade confiável.}
 \label{tab:comparison}
 \begin{tabular}{@{}lrr@{}}
 \toprule
@@ -1302,12 +1425,12 @@ a precisão é a métrica de especificidade confiável (Seção~\ref{subsec:res_
 \quad Precisão            & \textbf{0,986} & \textbf{0,992} \\
 \quad Revocação / TPR     & 0,809          & 0,966 \\
 \quad F1-score            & 0,889          & 0,979 \\
-\quad FPR\rlap{$^\dagger$} & 0,607          & 0,933 \\ \midrule
+\quad FPR\rlap{$^\dagger$} & 0,607         & 0,933 \\ \midrule
 \multicolumn{3}{l}{\textit{Classificação de tipo (Fase 2)}} \\
-\quad Acurácia (tipo)   & —               & \textbf{60,5\%} \\
-\quad Macro F1          & —               & 0,269 \\
-\quad recon F1          & —               & \textbf{0,861} \\
-\quad dos F1            & —               & 0,753 \\
+\quad Acurácia (tipo)   & ---             & \textbf{60,5\%} \\
+\quad Macro F1          & ---             & 0,269 \\
+\quad recon F1          & ---             & \textbf{0,861} \\
+\quad dos F1            & ---             & 0,753 \\
 \midrule
 \multicolumn{3}{l}{\textit{Recursos (VIM 4, durante a sessão)}} \\
 \quad CPU média         & 11,8\%          & 12,1\% \\
@@ -1319,17 +1442,13 @@ a precisão é a métrica de especificidade confiável (Seção~\ref{subsec:res_
 \quad Alertas emitidos  & \textbf{71.216} & 45.529 \\
 \quad Tráfego de ataque & $\sim$120 fluxos/s & $\sim$57 fluxos/s \\
 \quad Atraso de emissão (mediana) & 163~s & 216~s \\ \midrule
-\multicolumn{3}{l}{\textit{Energia estimada$^{b}$}} \\
+\multicolumn{3}{l}{\textit{Energia estimada (modelo calibrado, Eq.~\ref{eq:power})}} \\
 \quad Potência média (ataque) & 3,39~W & 3,40~W \\
 \quad Potência média (idle)   & 2,71~W & 2,72~W \\
 \quad Energia total (banda)   & 4.209--6.410~J & 4.253--6.478~J \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-
-
-
 
 O resultado central da comparação é que o custo de acrescentar a Fase~2 ao nó de
 borda é quase inteiramente de memória. Durante a sessão, o uso de CPU é
@@ -1376,12 +1495,10 @@ mais eficiente, em trabalhos futuros.
 O consumo de energia da Tabela~\ref{tab:comparison} é uma estimativa, não uma
 medição direta, porque o VIM~4 não expõe interface RAPL, INA226 ou
 \texttt{hwmon}. A potência é modelada linearmente pela utilização de CPU,
-
 \begin{equation}
 P(t) = P_{idle} + (P_{max} - P_{idle}) \times \text{CPU\%}(t),
 \label{eq:power}
 \end{equation}
-
 com \textit{endpoints} calibrados: \texttt{calibrate\_power.py} mede a utilização
 de CPU em repouso (0,1\%) e sob carga total (\texttt{stress}, 99,9\%),
 registrando como proveniência a temperatura (de 49 a 64~°C) e a frequência por
@@ -1399,13 +1516,16 @@ praticamente o mesmo nos dois pipelines ($\approx$3,4~W), coerente com o fato de
 o custo da Fase~2 ser de RAM, e não de CPU. Uma medição absoluta exigiria um
 medidor de hardware externo, apontado como trabalho futuro.
 
-%─────────────────────────────────────────────────────────────────────────────
-\section{Conclusão}
-\label{sec:conclusao}
+% ============================================================================
+\section{CONCLUSÕES}
+\label{sec:conclusoes}
 
-Este trabalho apresentou um IDS hierárquico de duas fases para ambientes IoT em
+Este projeto apresentou um IDS hierárquico de duas fases para ambientes IoT em
 redes 6G com MEC, cobrindo desde a construção do pipeline de dados até a
-implantação e a validação no \textit{testbed} sobre a placa VIM~4. A contribuição
+implantação e a validação no \textit{testbed} sobre a placa VIM~4, o que cumpre
+o objetivo geral e os seis primeiros objetivos específicos da
+Seção~\ref{sec:objetivos}; o sétimo, a terceira fase de agrupamento, foi
+explorado apenas \textit{offline} (Seção~\ref{subsubsec:fase3}). A contribuição
 central não é apenas o modelo, mas a demonstração de que o pipeline completo é
 executável dentro do orçamento de recursos de um nó de borda ARM, com a
 delimitação empírica de onde as \textit{features} por fluxo deixam de ser
@@ -1417,12 +1537,13 @@ quase instantânea (0--6~s) e mais forte nas inundações volumétricas, com
 \textit{spoofing} a 1,00 de revocação e DoS entre 0,84 e 0,95. Os ataques de
 baixo volume (força bruta, MITM e web) geraram poucos fluxos para serem avaliados
 ou foram majoritariamente perdidos, limite empírico que a solução torna explícito.
-Sobre os fluxos sinalizados, a Fase~2 classificou corretamente o reconhecimento de
-rede (F1 = 0,861), a um custo adicional de apenas 53~MB de RAM, sem
-\textit{overhead} de CPU nem de energia, o que confirma
-a premissa que motiva a arquitetura: rotular o tipo de ataque para triagem é
-viável no próprio nó de borda, pois a inferência da segunda fase é amortizada
-pelo rastreamento de fluxos, etapa que já domina o tempo de processamento.
+Sobre os fluxos sinalizados, a Fase~2 classificou corretamente o reconhecimento
+de rede (F1 = 0,861), a um custo adicional de apenas 53~MB de RAM, sem
+\textit{overhead} de CPU nem de energia, o
+que confirma a premissa que motiva a arquitetura: rotular o tipo de ataque para
+triagem é viável no próprio nó de borda, pois a inferência da segunda fase é
+amortizada pelo rastreamento de fluxos, etapa que já domina o tempo de
+processamento.
 
 A validação também tornou explícito o teto da abordagem atual. A Fase~2 converge
 para \texttt{dos} as classes cujo comportamento ao vivo é, de fato, uma
@@ -1442,7 +1563,7 @@ consolidada em scripts reprodutíveis, executáveis com um único comando, e o
 projeto completo, incluindo os modelos treinados, está disponível em repositório
 aberto\footnote{\url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks}};
 a ferramenta \textit{netflower} é mantida em repositório próprio
-(Seção~\ref{sec:metodologia}).
+(Seção~\ref{subsec:pipeline}).
 
 Esses limites orientam os trabalhos futuros. O mais imediato é enriquecer o
 espaço de \textit{features} com estado agregado entre fluxos, capaz de separar
@@ -1451,16 +1572,121 @@ ambiente de avaliação com serviços e vítimas reais que reduza o desvio entre
 treino e produção. Em paralelo, cabe mitigar a saturação do extrator sob
 \textit{flood}, por limitação de taxa ou captura mais eficiente, reduzir o
 \texttt{idle\_timeout} para capturar ataques de curta duração como o \textit{scan}
-UDP do \textit{recon}, e substituir a estimativa de energia por medição direta
-com um medidor de hardware externo. Por fim, como as métricas reportadas
-derivam de uma única execução de cada sessão de avaliação, cabe submetê-las a
-análise estatística: repetir o protocolo experimental múltiplas vezes para
-estimar a variabilidade das métricas de detecção e de custo, reportá-las com
-intervalos de confiança e verificar, por testes de significância, se as
-diferenças observadas entre os pipelines binário e multiclasse se sustentam
-entre execuções.
+UDP do \textit{recon}, substituir a estimativa de energia por medição direta
+com um medidor de hardware externo e integrar ao IDS a terceira fase de
+agrupamento explorada \textit{offline}, para sinalizar tráfego que não se
+encaixa nas classes conhecidas. Por fim, como as métricas reportadas derivam de
+uma única execução de cada sessão de avaliação, cabe submetê-las a análise
+estatística: repetir o protocolo experimental múltiplas vezes para estimar a
+variabilidade das métricas de detecção e de custo, reportá-las com intervalos
+de confiança e verificar, por testes de significância, se as diferenças
+observadas entre os pipelines binário e multiclasse se sustentam entre
+execuções.
 
-%─────────────────────────────────────────────────────────────────────────────
+% ============================================================================
+% 8. REFERÊNCIAS BIBLIOGRÁFICAS (seção numerada via tocbibind, ver preâmbulo)
+% ============================================================================
 \bibliographystyle{sbc}
-\bibliography{artigo}
+\bibliography{referencias}
+
+% ============================================================================
+\section{PRODUÇÃO BIBLIOGRÁFICA ADVINDA DA EXECUÇÃO DO PROJETO}
+\label{sec:producao}
+
+\begin{itemize}
+  \item \textbf{Artigo científico completo} (em português, formato da Sociedade
+    Brasileira de Computação, SBC): \textsc{Silva}, L. H. B. A.; \textsc{Souza},
+    C. B. B.; \textsc{Balieiro}, A. M. \textit{Uma Solução Hierárquica para
+    Detecção de Ciberataques em Ambientes IoT baseados em Redes MEC 6G}, 2026.
+    O artigo consolida os resultados deste plano de trabalho e constituiu o
+    Trabalho de Conclusão de Curso (TCC) do estudante no curso de Sistemas de
+    Informação do Centro de Informática (CIn) da UFPE; até a data deste
+    relatório, não havia sido aceito em evento ou periódico.
+  \item \textbf{Versão resumida em inglês}, \textit{A Hierarchical Attack
+    Detection Solution for 6G MEC-based IoT Networks}, preparada no formato
+    IEEE para submissão a conferência internacional, também sem aceite até a
+    data deste relatório.
+  \item \textbf{Software} \textit{netflower}: extrator de fluxos de rede para
+    dispositivos de borda, publicado no Python Package Index
+    (\url{https://pypi.org/project/netflower/}) sob licença MIT, com
+    código-fonte em \url{https://github.com/luiz-linkezio/netflower}.
+  \item \textbf{Repositório aberto do projeto}, com os notebooks do pipeline de
+    dados e de treinamento, os scripts do IDS e da validação automatizada, os
+    modelos treinados e os relatórios de experimentos:
+    \url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks}.
+\end{itemize}
+
+% ============================================================================
+\section{ATIVIDADES PARALELAS DESENVOLVIDAS PELO ESTUDANTE}
+\label{sec:paralelas}
+
+Em paralelo ao plano de trabalho, o estudante elaborou seu Trabalho de
+Conclusão de Curso no curso de Sistemas de Informação do CIn/UFPE, cujo tema
+coincide com o desta pesquisa e cujo texto corresponde ao artigo listado na
+Seção~\ref{sec:producao}. Também desenvolveu e publicou como software livre a
+ferramenta \textit{netflower}, mantida em repositório próprio, cuja utilidade
+extrapola este projeto por converter capturas de rede em fluxos com o conjunto
+de \textit{features} do CICFlowMeter em qualquer máquina Linux, inclusive
+dispositivos ARM.
+
+% ============================================================================
+\section{DIFICULDADES ENCONTRADAS NO DESENVOLVIMENTO DO PROJETO}
+\label{sec:dificuldades}
+
+As principais dificuldades surgiram na transição do ambiente \textit{offline}
+para a operação real no nó de borda e estão documentadas, junto com as
+soluções adotadas, no repositório do projeto.
+
+A primeira foi a escala dos dados. As capturas brutas dos datasets CIC somam
+cerca de 1~TB de PCAPs, inviáveis de manter em memória ou de processar com
+ferramentas convencionais de extração de fluxos em tempo razoável, sobretudo
+com vistas à execução posterior em um dispositivo ARM. A solução foi
+desenvolver o \textit{netflower}, com processamento paralelo e memória
+constante por fluxo, e consolidar os fluxos em um banco SQLite de cerca de
+190~GB, inserido em blocos e indexado por rótulo, o que permitiu amostragem
+balanceada em hardware convencional.
+
+A segunda foi o desvio de distribuição entre o tráfego de treino e o de
+produção. Modelos treinados apenas com o tráfego benigno \textit{scripted} dos
+datasets classificavam como ataque o tráfego interativo real do laboratório
+(sessões SSH e HTTP de curta duração), e um artefato do extrator (micro-fluxos
+de encerramento TCP) gerava falsos positivos sistemáticos. Foi necessário
+coletar dezenas de horas de tráfego benigno real para o treinamento, elevar o
+limiar de implantação para 0,9 e adicionar uma guarda de pacote mínimo no IDS.
+Parte do desvio persiste e explica o colapso de força bruta, web e MITM na
+classe \texttt{dos} na Fase~2, que só uma avaliação com serviços e vítimas
+reais poderia dissipar.
+
+A terceira foi a própria execução dos experimentos no nó ARM. Sob
+\textit{floods} de alta taxa, o extrator satura e emite os fluxos com atraso
+mediano de 163 a 216~s, deslocando os alertas para segundos e janelas posteriores;
+foi esse deslocamento que motivou a adoção de uma métrica \emph{por fluxo}
+(rotulando cada fluxo pelo seu início, e não pela emissão), em vez da contagem por
+segundo. Além disso, o IDS binário não encerrava com SIGINT, porque a captura ao
+vivo sequestra o sinal, e contaminava a sessão seguinte; a captura PCAP no
+atacante gerava arquivos de vários gigabytes sem valor analítico; e o ataque de
+\textit{spoofing} inicialmente não emitia pacotes. Cada problema exigiu uma
+correção no protocolo ou nos scripts: intervalos ociosos de 120~s entre ataques,
+métrica por fluxo rotulada por \texttt{flow\_ts} (com janela estrita e calibração
+$+2$~s da defasagem do orquestrador), reinstalação dos tratadores de sinal com
+escalada INT/TERM/KILL no orquestrador, desativação da captura PCAP (as métricas
+derivam do log do IDS) e uso de \textit{flood} com origem forjada fixa. Só após essas correções o protocolo pôde ser consolidado em um único
+comando reprodutível.
+
+Por fim, a medição de energia. A VIM~4 não expõe sensor de potência por
+software (RAPL, INA226 ou \texttt{hwmon}), de modo que o consumo teve de ser
+estimado por um modelo linear na utilização de CPU, calibrado no próprio
+dispositivo e reportado com banda de incerteza explícita; uma medição absoluta
+exigiria um medidor de hardware externo, o que ficou como trabalho futuro. Da
+mesma forma, a terceira fase da arquitetura (agrupamento de fluxos de baixa
+confiança para ameaças desconhecidas) ficou restrita a uma exploração
+\textit{offline} e não foi integrada ao IDS implantado.
+
+\vspace{1.1cm}
+\noindent
+\begin{tabular}{@{}p{7.4cm}@{\hspace{1.2cm}}p{7.4cm}@{}}
+\rule{7.4cm}{0.4pt} & \rule{7.4cm}{0.4pt} \\
+Data e assinatura do(a) orientador(a) & Data e assinatura do(a) estudante \\
+\end{tabular}
+
 \end{document}
