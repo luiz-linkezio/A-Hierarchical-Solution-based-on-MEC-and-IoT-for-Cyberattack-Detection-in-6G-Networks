@@ -149,7 +149,7 @@ the kernel buffer dropped packets.
 Detection is scored per flow: each classified flow is labelled by the attack
 window in which it started (`flow_ts`, the pcap capture time of its first
 packet), never by when the alert was emitted. This matters because under flood
-the ARM node cannot keep up and emits flows with a median delay of 180–437 s, so
+the ARM node cannot keep up and emits flows with a median delay of 181–428 s, so
 any emission-time or per-second metric leaks alerts into neighbouring windows.
 `ids_metrics.py` reports both strict ground-truth windows and a `+2 s`
 calibration (`--window-guard 2`) that corrects the orchestrator's start-logging
@@ -157,29 +157,32 @@ lag; labelling stays on `flow_ts` either way.
 
 Full methodology, artifact descriptions, results, and the issues found during
 execution are documented in
-**[`docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md`](docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md)**
+**[`docs/experimentos/2026-09-30-vim4-dreno-completo.md`](docs/experimentos/2026-09-30-vim4-dreno-completo.md)**
 (earlier runs are kept for history in
+[`docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md`](docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md),
 [`docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md`](docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md)
 and
 [`docs/experimentos/2026-06-19-vim4-revalidacao.md`](docs/experimentos/2026-06-19-vim4-revalidacao.md)).
 
-Headline results (run `20260930_014420`, calibrated windows). The binary IDS
-reaches a per-flow precision of about 98% at a recall of 64% (F1 78%), strongest
-on volumetric floods (*spoofing* recall 94%, *DoS* 92%) and weakest on the
+Headline results (run `20260930_162133`, calibrated windows). The binary IDS
+reaches a per-flow precision of about 97% at a recall of 70% (F1 81%), strongest
+on volumetric floods (*spoofing* recall 95%, *DoS* 90%) and weakest on the
 single-packet UDP flood tail: at the operating threshold of 0.9 those flows score
 about 0.81 and fall just below it, which is what pulls recall down. The multiclass
-IDS classifies *recon* at F1 = 74% and *DoS* at 62%, while *spoofing* collapses
+IDS classifies *recon* at F1 = 75% and *DoS* at 61%, while *spoofing* collapses
 onto *DoS* in the 55 per-flow features (macro-F1 = 19% over the attack classes).
-Brute force (258 flows) and MITM (192 flows, TCP and UDP through the poisoned
+Brute force (233 flows) and MITM (193 flows, TCP and UDP through the poisoned
 route) are now evaluated; their recall is low because both are low-volume attacks
 the model rarely flags at 0.9.
 
 The main finding is a throughput ceiling. At about 1050 flows/s the VIM 4 cannot
 classify in real time: it queues rather than drops, with an average end-to-end
-latency of 120 s for the binary pipeline and 352 s for the hierarchical one, a
-queue that peaks near half a million flows, and RAM around 2.6 GB. Phase 2 roughly
-triples the latency, raises average CPU from 12% to 40% and average power from
-3.36 W to 5.03 W, and leaves a residual backlog the node never drains. The two
+latency of 116 s for the binary pipeline and 343 s for the hierarchical one, a
+queue that peaks near half a million flows, and RAM around 2.6 GB. At shutdown the
+worker drains the queue completely before reporting, so no captured flow is
+dropped (zero residual in both sessions). Phase 2 roughly
+triples the latency, raises average CPU from 12% to 42% and average power from
+3.37 W to 5.13 W. The two
 phases do not fit the edge node's real-time budget under sustained flood, and
 closing that gap (sampling under overload, multiple workers, more capable
 hardware) is left as future work. The raw false-positive rate is not a reliable

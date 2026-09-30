@@ -53,23 +53,23 @@ database. In offline evaluation, Phase 1 achieved 80\% accuracy and 96\%
 attack recall (F2 = 88,6\%). In a fully scripted testbed validation on VIM~4
 covering all eight attack categories, detection is scored \emph{per flow},
 labelling each flow by the attack window in which it started, a metric
-independent of the flow-extractor emission delay (median 180--437~s) that
+independent of the flow-extractor emission delay (median 181--428~s) that
 invalidates per-second scoring. The binary IDS reached a per-flow precision of
-98\% at a recall of 64\% (F1 78\%), reported over both strict ground-truth
+97\% at a recall of 70\% (F1 81\%), reported over both strict ground-truth
 windows and a $+2$~s calibration for the orchestrator's start-logging lag.
-Detection is strongest on volumetric floods (spoofing recall 94\%, DoS 92\%)
-and weakest on single-packet UDP flood tails and low-volume attacks (DDoS 46\%,
-reconnaissance 57\%, web, MITM and brute force below 15\%), because the
+Detection is strongest on volumetric floods (spoofing recall 95\%, DoS 90\%)
+and weakest on single-packet UDP flood tails and low-volume attacks (DDoS 56\%,
+reconnaissance 59\%, web, MITM and brute force below 20\%), because the
 operational 0.9 threshold rejects the single-packet flows the model scores near
-0.81. The multiclass IDS classifies reconnaissance best (F1 = 74\%) while the
-other categories collapse onto the DoS class (type accuracy 44\%, macro-F1 19\%
+0.81. The multiclass IDS classifies reconnaissance best (F1 = 75\%) while the
+other categories collapse onto the DoS class (type accuracy 42\%, macro-F1 19\%
 over attack classes). To score every flow without dropping packets under flood,
 the IDS decouples capture from inference through a queue and batched
 classification. Under a sustained 1050~flows/s the VIM~4 cannot keep up in real
-time and buffers the load, so end-to-end latency rises from 120~s (binary) to
-352~s (hierarchical), peak queue occupancy reaches about 0.5~million flows and
+time and buffers the load, so end-to-end latency rises from 116~s (binary) to
+343~s (hierarchical), peak queue occupancy reaches about 0.5~million flows and
 memory 2.6~GB. Phase~2 roughly triples latency and raises average power from
-3.36~W to 5.03~W. Energy is reported as a calibrated CPU-utilization estimate
+3.37~W to 5.13~W. Energy is reported as a calibrated CPU-utilization estimate
 with an explicit uncertainty band, since the ARM node exposes no direct power
 sensor. The results characterize both the detection behaviour and the
 throughput ceiling of a hierarchical IDS on a real ARM edge node under attack
@@ -91,24 +91,24 @@ SQLite de $\sim$190~GB. Em avaliação offline local, a Fase~1 atingiu acurácia
 \textit{testbed} totalmente automatizada no VIM~4 cobrindo as oito categorias de
 ataque, a detecção é avaliada \emph{por fluxo}, rotulando cada fluxo pela janela
 de ataque em que ele \emph{começou}, métrica que independe do atraso de emissão
-do extrator de fluxos (mediana de 180--437~s) que invalida a contagem por
-segundo. O IDS binário alcançou precisão por fluxo de 98\% a uma revocação de
-64\% (F1 de 78\%), reportada tanto sobre janelas estritas de \textit{ground
+do extrator de fluxos (mediana de 181--428~s) que invalida a contagem por
+segundo. O IDS binário alcançou precisão por fluxo de 97\% a uma revocação de
+70\% (F1 de 81\%), reportada tanto sobre janelas estritas de \textit{ground
 truth} quanto sobre uma calibração de $+2$~s que corrige a defasagem de registro
 do orquestrador. A detecção é mais forte nas inundações volumétricas
-(\textit{spoofing} com revocação 94\%, DoS 92\%) e mais fraca na cauda de
-inundações UDP de pacote único e nos ataques de baixo volume (DDoS 46\%,
-reconhecimento 57\%, web, MITM e força bruta abaixo de 15\%), porque o limiar
+(\textit{spoofing} com revocação 95\%, DoS 90\%) e mais fraca na cauda de
+inundações UDP de pacote único e nos ataques de baixo volume (DDoS 56\%,
+reconhecimento 59\%, web, MITM e força bruta abaixo de 20\%), porque o limiar
 operacional de 0,9 descarta os fluxos de pacote único que o modelo pontua perto
-de 0,81. O IDS multiclasse classifica melhor o reconhecimento (F1 = 74\%),
-enquanto as demais categorias colapsam na classe DoS (acurácia de tipo 44\%,
+de 0,81. O IDS multiclasse classifica melhor o reconhecimento (F1 = 75\%),
+enquanto as demais categorias colapsam na classe DoS (acurácia de tipo 42\%,
 macro-F1 19\% sobre as classes de ataque). Para pontuar todo fluxo sem descartar
 pacotes sob inundação, o IDS desacopla a captura da inferência por meio de uma
 fila e classificação em lote. Sob 1050~fluxos/s sustentados o VIM~4 não acompanha
 em tempo real e enfileira a carga, de modo que a latência de ponta a ponta sobe
-de 120~s (binário) para 352~s (hierárquico), a ocupação de pico da fila chega a
+de 116~s (binário) para 343~s (hierárquico), a ocupação de pico da fila chega a
 cerca de 0,5~milhão de fluxos e a memória a 2,6~GB. A Fase~2 aproximadamente
-triplica a latência e eleva a potência média de 3,36~W para 5,03~W. A energia é
+triplica a latência e eleva a potência média de 3,37~W para 5,13~W. A energia é
 reportada como estimativa calibrada por utilização de CPU com banda de incerteza
 explícita, pois o nó ARM não expõe sensor de potência direto. Os resultados
 caracterizam tanto o comportamento de detecção quanto o teto de vazão de um IDS
@@ -188,7 +188,7 @@ publicada no PyPI, para conversão paralela de PCAPs em fluxos, o IDS hierárqui
 com duas fases complementares e a validação no \textit{testbed} com tráfego de
 ataque real, com comparação quantitativa entre o pipeline binário e o
 multiclasse em métricas de detecção (acurácia, precisão, revocação, F1, taxas de
-falsos positivos, FPR, e de falsos negativos, FNR) e de custo (consumo de CPU, RAM e energia, além de \textit{throughput} de alertas). Nos resultados mais relevantes, avaliados \emph{por fluxo} (cada fluxo rotulado pela janela de ataque em que começou, métrica imune ao atraso de emissão do extrator, de 180--437~s de mediana), o IDS binário alcançou precisão de $\approx$98\% a uma revocação de $\approx$64\% (F1 de $\approx$78\%). A detecção é forte nas inundações volumétricas (\textit{spoofing} com revocação de 94\% e DoS de 92\%), mas fraca na cauda de pacote único das inundações UDP e nos ataques de baixo volume, que o limiar operacional de 0,9 descarta. A Fase~2 classificou corretamente apenas o reconhecimento de rede (F1 = 74\%) e delimitou empiricamente onde as 55 \textit{features} por fluxo deixam de separar os tipos de ataque, colapsando-os na classe DoS. A validação também caracterizou o teto de vazão do nó de borda: a cerca de 1.050 fluxos/s o VIM~4 não classifica em tempo real e enfileira a carga, com latência de alerta de 120~s (binário) a 352~s (hierárquico), e a Fase~2 triplica essa latência e eleva CPU e potência de forma mensurável.
+falsos positivos, FPR, e de falsos negativos, FNR) e de custo (consumo de CPU, RAM e energia, além de \textit{throughput} de alertas). Nos resultados mais relevantes, avaliados \emph{por fluxo} (cada fluxo rotulado pela janela de ataque em que começou, métrica imune ao atraso de emissão do extrator, de 181--428~s de mediana), o IDS binário alcançou precisão de $\approx$97\% a uma revocação de $\approx$70\% (F1 de $\approx$81\%). A detecção é forte nas inundações volumétricas (\textit{spoofing} com revocação de 95\% e DoS de 90\%), mas fraca na cauda de pacote único das inundações UDP e nos ataques de baixo volume, que o limiar operacional de 0,9 descarta. A Fase~2 classificou corretamente apenas o reconhecimento de rede (F1 = 75\%) e delimitou empiricamente onde as 55 \textit{features} por fluxo deixam de separar os tipos de ataque, colapsando-os na classe DoS. A validação também caracterizou o teto de vazão do nó de borda: a cerca de 1.050 fluxos/s o VIM~4 não classifica em tempo real e enfileira a carga, com latência de alerta de 116~s (binário) a 343~s (hierárquico), e a Fase~2 triplica essa latência e eleva CPU e potência de forma mensurável.
 
 O artigo está organizado da seguinte forma. A Seção~\ref{trabalhosRelacionados} apresenta os trabalhos relacionados e a fundamentação teórica; a Seção~\ref{sec:metodologia} descreve a metodologia proposta; a Seção~\ref{sec:resultados} apresenta e discute os resultados da validação no \textit{testbed}; e a Seção~\ref{sec:conclusao} conclui o trabalho e aponta os trabalhos futuros.
 
@@ -1080,15 +1080,15 @@ de $+2$~s os reabsorve por completo (a correção satura em 2~s, idêntica a $+3
 $+5$~s). A calibração continua rotulando pelo \texttt{flow\_ts}, sem reintroduzir
 hora de emissão.
 
-Sob a janela calibrada, o detector alcança precisão de 98,4\%, revocação de 64,3\%
-e F1 de 77,8\%. Sob a janela estrita, são 96,9\%, 64,0\% e 77,1\% (Tabela~\ref{tab:bin_metrics}).
-A revocação de $\sim$64\% reflete uma escolha de limiar, não uma falha de captura:
+Sob a janela calibrada, o detector alcança precisão de 96,8\%, revocação de 70,1\%
+e F1 de 81,3\%. Sob a janela estrita, são 94,5\%, 69,6\% e 80,2\% (Tabela~\ref{tab:bin_metrics}).
+A revocação de $\sim$70\% reflete uma escolha de limiar, não uma falha de captura:
 o limiar operacional de 0,9 descarta a cauda de fluxos de pacote único das
 inundações UDP, que o modelo pontua perto de 0,81, logo abaixo do corte, e que
 respondem pela maior parte dos falsos negativos. A \emph{precisão} é a métrica de
 especificidade confiável neste \textit{testbed}: como a captura é dominada por
 \textit{flood} (a grande maioria dos fluxos é ataque), o tráfego genuinamente
-benigno é uma fração pequena do total, e o FPR (33,2\% calibrado; 49,2\% estrito)
+benigno é uma fração pequena do total, e o FPR (42,3\% calibrado; 55,3\% estrito)
 herda um denominador ruidoso, não comparável a um FPR medido sobre um
 \textit{baseline} benigno limpo. A matriz de confusão da Tabela~\ref{tab:bin_cm}
 apresenta os dois regimes lado a lado.
@@ -1104,8 +1104,8 @@ estrita e janela calibrada ($+2$~s).}
 \cmidrule{3-4}
 & & \textbf{Ataque} & \textbf{Benigno} \\ \midrule
 \multirow{2}{*}{\textbf{Ground truth}}
-  & Ataque  & 510.777 / 518.647 & 287.564 / 287.585 \\
-  & Benigno &  16.151 / \ \ 8.281 &  16.662 / 16.641 \\ \bottomrule
+  & Ataque  & 536.669 / 549.417 & 234.470 / 234.511 \\
+  & Benigno &  31.167 / 18.419 &  25.152 / 25.111 \\ \bottomrule
 \end{tabular}
 \end{table}
 
@@ -1120,12 +1120,12 @@ captura saturada de \textit{flood}).}
 \begin{tabular}{@{}lrr@{}}
 \toprule
 \textbf{Métrica} & \textbf{Estrita} & \textbf{Calibrada ($+2$~s)} \\ \midrule
-Acurácia            & 63,5\% & \textbf{64,4\%} \\
-Precisão            & 96,9\% & \textbf{98,4\%} \\
-Revocação / TPR     & 64,0\% & \textbf{64,3\%} \\
-F1-score            & 77,1\% & \textbf{77,8\%} \\
-FPR                 & 49,2\% & 33,2\% \\
-FNR                 & 36,0\% & 35,7\% \\
+Acurácia            & 67,9\% & \textbf{69,4\%} \\
+Precisão            & 94,5\% & \textbf{96,8\%} \\
+Revocação / TPR     & 69,6\% & \textbf{70,1\%} \\
+F1-score            & 80,2\% & \textbf{81,3\%} \\
+FPR                 & 55,3\% & 42,3\% \\
+FNR                 & 30,4\% & 29,9\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1134,19 +1134,19 @@ FNR                 & 36,0\% & 35,7\% \\
 
 A revocação não se distribui por igual entre os ataques
 (Figura~\ref{fig:detection_rate}, janela calibrada). As inundações volumétricas
-são detectadas de forma robusta (\textit{spoofing} com 94\% dos fluxos e DoS
-com 92\%), enquanto o DDoS cai a 46\%. A diferença entre DoS e DDoS vem da
+são detectadas de forma robusta (\textit{spoofing} com 95\% dos fluxos e DoS
+com 90\%), enquanto o DDoS cai a 56\%. A diferença entre DoS e DDoS vem da
 composição do tráfego: o DDoS com origem aleatória gera uma proporção bem maior
 de fluxos UDP de pacote único, que o modelo pontua logo abaixo do limiar e que
-por isso escapam. O \textit{recon} atinge 57\%, pois o \textit{scan} do nmap
+por isso escapam. O \textit{recon} atinge 59\%, pois o \textit{scan} do nmap
 emite poucos pacotes por porta, que não acumulam \textit{features} suficientes
 antes de o fluxo expirar (\texttt{idle\_timeout} de 30~s). Os ataques de baixo
-volume ficam bem abaixo: força bruta 14\%, MITM 10\%, \textit{malware} 3\% e web
-0,7\%. Essa fraqueza é do modelo no limiar operacional, não do gerador de tráfego.
-A força bruta gerou 258 fluxos de autenticação reais sobre SSH, HTTP e Telnet, e
-o MITM, 192 fluxos TCP e UDP pela rota ARP-envenenada; ambos são amostras
+volume ficam bem abaixo: força bruta 17\%, MITM 8\%, \textit{malware} 3\% e web
+0,6\%. Essa fraqueza é do modelo no limiar operacional, não do gerador de tráfego.
+A força bruta gerou 233 fluxos de autenticação reais sobre SSH, HTTP e Telnet, e
+o MITM, 193 fluxos TCP e UDP pela rota ARP-envenenada; ambos são amostras
 pequenas por serem ataques de baixo volume, mas bastam para evidenciar que o
-detector quase não os alerta. O \textit{web}, mesmo com 8154 fluxos contra um
+detector quase não os alerta. O \textit{web}, mesmo com 8168 fluxos contra um
 servidor HTTP real, é quase todo lido como benigno, assim como o \textit{malware},
 composto de varreduras e conexões curtas de \textit{beacon} esparsas.
 
@@ -1172,8 +1172,8 @@ composto de varreduras e conexões curtas de \textit{beacon} esparsas.
   axis lines*=left,
 ]
 \addplot[fill=gray!45, draw=black] coordinates {
-  (0.7,web) (2.9,malware) (10.4,mitm) (14.0,bruteforce)
-  (46.1,ddos) (57.4,recon) (92.2,dos) (94.0,spoofing)};
+  (0.6,web) (2.9,malware) (7.8,mitm) (16.7,bruteforce)
+  (56.2,ddos) (59.4,recon) (89.6,dos) (95.2,spoofing)};
 \end{axis}
 \end{tikzpicture}
 \caption{Revocação por fluxo por tipo de ataque no IDS binário, janela calibrada
@@ -1188,7 +1188,7 @@ escapam ao limiar operacional de 0,9.}
 
 As oito classes geraram fluxos, mas em volumes muito desiguais. As inundações
 volumétricas (DoS, DDoS e \textit{spoofing}) e o \textit{recon} dominam, enquanto
-web (8.143 fluxos), força bruta (256), MITM (116) e \textit{malware} (103) são
+web (8.131 fluxos), força bruta (264), MITM (116) e \textit{malware} (103) são
 amostras pequenas por serem ataques de baixo volume. Como cada fluxo é rotulado
 pela janela em que começou e as janelas não se sobrepõem, os resultados por
 classe são atribuíveis ao comportamento de cada ataque, independentemente de
@@ -1196,12 +1196,12 @@ quando o extrator emitiu os fluxos.
 
 O desempenho por classe (Tabela~\ref{tab:multi_metrics}), resumido visualmente
 pela Figura~\ref{fig:multi_f1}, divide os ataques em dois regimes nítidos. A
-Fase~2 classifica corretamente o \texttt{recon} (F1 = 73,7\%), mas
+Fase~2 classifica corretamente o \texttt{recon} (F1 = 74,6\%), mas
 \texttt{spoofing} colapsa na classe \texttt{dos}, que absorve quase todos os
-fluxos de ataque (precisão de 74\% e F1 de 61,8\%). As demais classes quase não
-são reconhecidas. A acurácia de tipo é de 44,2\% (43,1\% sob janela estrita) e o
+fluxos de ataque (precisão de 74\% e F1 de 60,6\%). As demais classes quase não
+são reconhecidas. A acurácia de tipo é de 41,7\% (40,6\% sob janela estrita) e o
 macro-F1 sobre as classes de ataque é de 19,4\%. Restrita aos fluxos que a Fase~1
-de fato detectou, a acurácia de tipo sobe para 68,6\%. Na prática, o rótulo de
+de fato detectou, a acurácia de tipo sobe para 64,3\%. Na prática, o rótulo de
 tipo distingue varreduras de reconhecimento, mas não separa os demais ataques de
 uma inundação genérica, o que mantém a triagem dependente do alerta binário da
 Fase~1 nesses casos.
@@ -1216,14 +1216,14 @@ quase não são reconhecidas pela Fase~2.}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
 \textbf{Classe} & \textbf{Sup.} & \textbf{TP} & \textbf{FP} & \textbf{Prec.} & \textbf{F1} \\ \midrule
-recon             &   1.641 &   1.005 &      83 & 92\% & \textbf{73,7\%} \\
-dos (incl.\ ddos) & 625.147 & 330.203 & 113.288 & 74\% & 61,8\% \\
-spoofing          & 119.873 &       0 &      28 & 0\%  & 0\% \\
-web               &   8.143 &      11 &       0 & 100\% & 0,3\% \\
-bruteforce        &     256 &       1 &     580 & 0\%  & 0,2\% \\
-mitm              &     116 &       0 &   6.628 & 0\%  & 0\% \\
-malware           &     103 &       1 &  46.222 & 0\%  & 0\% \\ \midrule
-\textbf{Acurácia geral (tipo)} & \multicolumn{5}{r}{\textbf{44,2\%} (43,1\% estrita)} \\
+recon             &   1.638 &   1.006 &      54 & 95\% & \textbf{74,6\%} \\
+dos (incl.\ ddos) & 629.291 & 322.171 & 111.622 & 74\% & 60,6\% \\
+spoofing          & 142.195 &      28 &     376 & 7\%  & 0\% \\
+web               &   8.131 &       7 &       0 & 100\% & 0,2\% \\
+bruteforce        &     264 &       1 &     530 & 0\%  & 0,3\% \\
+mitm              &     116 &       1 &   9.582 & 0\%  & 0\% \\
+malware           &     103 &       1 &  70.786 & 0\%  & 0\% \\ \midrule
+\textbf{Acurácia geral (tipo)} & \multicolumn{5}{r}{\textbf{41,7\%} (40,6\% estrita)} \\
 \textbf{Macro F1 (classes de ataque)} & \multicolumn{5}{r}{19,4\%} \\
 \bottomrule
 \end{tabular}
@@ -1251,7 +1251,7 @@ malware           &     103 &       1 &  46.222 & 0\%  & 0\% \\ \midrule
   axis lines*=left,
 ]
 \addplot[fill=gray!45, draw=black] coordinates {
-  (0,mitm) (0,malware) (0,spoofing) (0.2,bruteforce) (0.3,web) (61.8,dos) (73.7,recon)};
+  (0,mitm) (0,malware) (0,spoofing) (0.3,bruteforce) (0.2,web) (60.6,dos) (74.6,recon)};
 \end{axis}
 \end{tikzpicture}
 \caption{F1 por tipo de ataque do IDS multiclasse na validação no
@@ -1284,8 +1284,8 @@ Três fenômenos de implantação, ausentes de avaliações puramente \textit{of
 ajudam a entender os resultados anteriores e são necessários para reproduzir o
 sistema. O mais consequente é o \emph{atraso de emissão} do extrator de fluxos:
 sob \textit{flood} de alta taxa, o nó ARM não acompanha o volume de pacotes e
-enfileira os fluxos, cuja mediana de atraso de emissão foi de 180~s no experimento
-binário e 437~s no multiclasse (p95 de 363 e 586~s, máximo de 494 e 588~s). O
+enfileira os fluxos, cuja mediana de atraso de emissão foi de 181~s no experimento
+binário e 428~s no multiclasse (p95 de 354 e 585~s, máximo de 514 e 589~s). O
 alerta chega, portanto, minutos depois de o fluxo ter começado. Esse é o artefato
 que invalida qualquer métrica ancorada no instante de emissão, inclusive a
 contagem por segundo, pois desloca alertas de ataque para segundos e janelas
@@ -1335,28 +1335,29 @@ A precisão é a métrica de especificidade confiável (Seção~\ref{subsec:res_
 \textbf{Métrica} & \shortstack[r]{\textbf{IDS Binário}\\ \textbf{(só Fase~1)}}
                  & \shortstack[r]{\textbf{IDS Multiclasse}\\ \textbf{(Fases~1+2)}} \\ \midrule
 \multicolumn{3}{l}{\textit{Detecção binária (Fase 1), por fluxo, janela $+2$~s}} \\
-\quad Precisão            & \textbf{98,4\%} & 97,0\% \\
-\quad Revocação / TPR     & 64,3\%          & 64,0\% \\
-\quad F1-score            & 77,8\%          & 77,1\% \\
-\quad Acurácia            & 64,4\%          & 63,5\% \\
-\quad FPR\rlap{$^\dagger$} & 33,2\%          & 47,7\% \\ \midrule
+\quad Precisão            & \textbf{96,8\%} & 97,4\% \\
+\quad Revocação / TPR     & \textbf{70,1\%} & 64,3\% \\
+\quad F1-score            & \textbf{81,3\%} & 77,5\% \\
+\quad Acurácia            & \textbf{69,4\%} & 63,9\% \\
+\quad FPR\rlap{$^\dagger$} & 42,3\%          & 47,8\% \\ \midrule
 \multicolumn{3}{l}{\textit{Classificação de tipo (Fase 2)}} \\
-\quad Acurácia (tipo)   & —               & \textbf{44,2\%} \\
+\quad Acurácia (tipo)   & —               & \textbf{41,7\%} \\
 \quad Macro F1 (ataques) & —              & 19,4\% \\
 \midrule
 \multicolumn{3}{l}{\textit{Recursos (VIM 4, durante a sessão)}} \\
-\quad CPU média / máx   & 11,8\% / 44,0\% & \textbf{40,1\% / 73,9\%} \\
-\quad RAM média / máx   & 1.907 / 2.528 MB & 2.010 / 2.663 MB \\ \midrule
+\quad CPU média / máx   & 12,3\% / 43,0\% & \textbf{41,6\% / 72,8\%} \\
+\quad RAM média / máx   & 1.866 / 2.449 MB & 2.041 / 2.606 MB \\ \midrule
 \multicolumn{3}{l}{\textit{Vazão, fila e latência}} \\
-\quad Fluxos classificados & 831.154 & 786.821 \\
-\quad Alertas emitidos  & 526.928 & 498.066 \\
-\quad Tráfego de ataque & $\sim$1.078 fluxos/s & $\sim$1.021 fluxos/s \\
-\quad Pico da fila      & 456.681 fluxos & 495.051 fluxos \\
-\quad Latência ponta a ponta (média) & 120~s & \textbf{352~s} \\
-\quad Atraso de emissão (mediana) & 180~s & 437~s \\ \midrule
+\quad Fluxos classificados & 827.458 & 809.448 \\
+\quad Alertas emitidos  & 567.836 & 516.182 \\
+\quad Tráfego de ataque & $\sim$985 fluxos/s & $\sim$1.050 fluxos/s \\
+\quad Pico da fila      & 433.469 fluxos & 491.880 fluxos \\
+\quad Resíduo na saída  & 0 fluxos & 0 fluxos \\
+\quad Latência ponta a ponta (média) & 116~s & \textbf{343~s} \\
+\quad Atraso de emissão (mediana) & 181~s & 428~s \\ \midrule
 \multicolumn{3}{l}{\textit{Energia estimada$^{b}$}} \\
-\quad Potência média & 3,36~W & \textbf{5,03~W} \\
-\quad Energia total (banda)   & 4.233--6.454~J & 6.437--9.973~J \\
+\quad Potência média & 3,37~W & \textbf{5,13~W} \\
+\quad Energia total (banda)   & 4.375--6.672~J & 6.478--10.043~J \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1368,24 +1369,28 @@ A precisão é a métrica de especificidade confiável (Seção~\ref{subsec:res_
 O resultado central da comparação é o teto de vazão do nó de borda, e o custo
 real da Fase~2 sob esse teto. A uma taxa de ataque em torno de 1.050 fluxos/s, o
 VIM~4 não classifica os fluxos em tempo real. Para não descartar tráfego, o IDS
-os enfileira, e a fila cresce durante toda a inundação: seu pico chega a 456.681
-fluxos no pipeline binário e 495.051 no hierárquico, o que empurra a RAM a 2,5 e
-2,6~GB. A latência de ponta a ponta média, medida do início do fluxo até sua
-classificação, é de 120~s no binário e sobe para 352~s no hierárquico. A Fase~2,
-portanto, não é gratuita: ela aproximadamente triplica a latência, leva a CPU
-média de 11,8\% para 40,1\% e a potência estimada de 3,36 para 5,03~W. A leitura
+os enfileira, e a fila cresce durante toda a inundação: seu pico chega a 433.469
+fluxos no pipeline binário e 491.880 no hierárquico, o que empurra a RAM a 2,4 e
+2,6~GB. No encerramento o IDS drena a fila por completo antes de reportar, então
+nenhum fluxo capturado é descartado (resíduo zero nas duas sessões). A latência de
+ponta a ponta média, medida do início do fluxo até sua classificação, é de 116~s
+no binário e sobe para 343~s no hierárquico. A Fase~2, portanto, não é gratuita:
+ela aproximadamente triplica a latência, leva a CPU média de 12,3\% para 41,6\% e a
+potência estimada de 3,37 para 5,13~W. A leitura
 de CPU média merece cautela, porque a inferência é servida por uma única
 \textit{thread}: um núcleo satura enquanto a média sobre os oito núcleos
 permanece moderada.
 
-O volume de fluxos classificados é próximo nas duas sessões, 831.154 no
-experimento binário (526.928 alertas) e 786.821 no multiclasse (498.066), a cerca
-de 1.078 e 1.021 fluxos de ataque por segundo. A pequena diferença tem duas
-origens: a intensidade do \textit{flood} varia alguns por cento entre execuções
-independentes, e a sessão hierárquica encerrou com um resíduo de 26.928 fluxos
-que não coube no tempo de drenagem da fila, de modo que viu um total ligeiramente
-maior do que registrou. Descontado esse resíduo, as duas sessões observam volumes
-equivalentes. A escolha
+O volume de fluxos classificados é próximo nas duas sessões, 827.458 no
+experimento binário (567.836 alertas) e 809.448 no multiclasse (516.182). Como
+cada sessão drena a fila por completo antes de encerrar, esses totais são o que
+cada pipeline de fato avaliou, sem resíduo descartado. A diferença de $\sim$2\%
+está quase toda no tráfego benigno de fundo capturado nas janelas (43.530 fluxos
+no binário contra 27.710 no multiclasse), que é ruído ambiente da rede e varia
+entre execuções. O tráfego de ataque, por sua vez, é praticamente idêntico nas
+duas (783.928 contra 781.738 fluxos, diferença de 0,3\%), e nas duas maiores
+inundações, DoS e DDoS, a sessão hierárquica chegou a ver um pouco mais. As duas
+pipelines observam, portanto, o mesmo volume de ataque. A escolha
 entre os dois pipelines é orientada pelo uso. Onde se precisa de alta frequência
 de alertas brutos, por exemplo para alimentar um sistema de gestão de eventos e
 informações de segurança (\textit{Security Information and Event Management},
@@ -1394,8 +1399,8 @@ rótulo de tipo para triagem, o multiclasse o agrega, ao custo de latência, CPU
 energia acima descrito.
 
 A comparação confirma, lado a lado, os dois comportamentos de detecção já
-discutidos. A precisão por fluxo é alta em ambos (98,4\% e 97,0\%, janela $+2$~s),
-e a revocação de $\sim$64\% concentra as perdas na cauda de pacote único das
+discutidos. A precisão por fluxo é alta em ambos (96,8\% e 97,4\%, janela $+2$~s),
+e a revocação, entre 64 e 70\%, concentra as perdas na cauda de pacote único das
 inundações UDP e nos ataques de baixo volume, enquanto \textit{spoofing} e DoS são
 detectados de forma robusta. O FPR aparentemente alto não mede especificidade
 aqui, mas o denominador pequeno de tráfego benigno sob captura saturada de
@@ -1428,9 +1433,9 @@ frequência (\textit{Dynamic Voltage and Frequency Scaling}, DVFS) a cada amostr
 ($\sim$3~s), e a potência é integrada sobre essa série, separando ataque e
 repouso pelas janelas de \textit{ground truth}. A incerteza é reportada como uma
 banda de sensibilidade ($P_{idle} \in [2{,}0;3{,}0]$~W, $P_{max} \in
-[7{,}0;11{,}0]$~W): de 4.233 a 6.454~J no binário e de 6.437 a 9.973~J no
+[7{,}0;11{,}0]$~W): de 4.375 a 6.672~J no binário e de 6.478 a 10.043~J no
 multiclasse. O que importa é a comparação relativa: a Fase~2 eleva a potência
-média em cerca de 50\% (de 3,36 para 5,03~W), coerente com o salto de utilização
+média em cerca de 50\% (de 3,37 para 5,13~W), coerente com o salto de utilização
 de CPU. Uma medição absoluta exigiria um medidor de hardware externo, apontado
 como trabalho futuro.
 
@@ -1445,13 +1450,13 @@ central não é apenas o modelo, mas a caracterização empírica de um IDS
 hierárquico executando sobre um nó de borda ARM real sob carga de ataque, tanto
 no comportamento de detecção quanto no teto de vazão do dispositivo. Em validação
 com o limiar de implantação fixado em 0,9, sob métrica \emph{por fluxo} (cada
-fluxo rotulado pela janela em que começou, imune ao atraso de emissão de 180 a
-437~s de mediana), o IDS binário alcançou precisão de $\approx$98\% a uma
-revocação de $\approx$64\% (F1 de $\approx$78\%). A detecção é mais forte nas
-inundações volumétricas, com \textit{spoofing} a 94\% de revocação e DoS a 92\%,
+fluxo rotulado pela janela em que começou, imune ao atraso de emissão de 181 a
+428~s de mediana), o IDS binário alcançou precisão de $\approx$97\% a uma
+revocação de $\approx$70\% (F1 de $\approx$81\%). A detecção é mais forte nas
+inundações volumétricas, com \textit{spoofing} a 95\% de revocação e DoS a 90\%,
 e mais fraca na cauda de pacote único das inundações UDP e nos ataques de baixo
 volume, que o limiar de 0,9 descarta. Sobre os fluxos sinalizados, a Fase~2
-classificou corretamente apenas o reconhecimento de rede (F1 = 74\%), enquanto as
+classificou corretamente apenas o reconhecimento de rede (F1 = 75\%), enquanto as
 demais classes colapsam na classe \texttt{dos}.
 
 A validação tornou explícitos dois tetos da abordagem atual. O primeiro é de
@@ -1464,8 +1469,8 @@ IPs de origem, que as 55 \textit{features} por fluxo não capturam. O segundo, e
 mais consequente para a implantação, é de vazão: a uma taxa em torno de 1.050
 fluxos/s o VIM~4 não classifica em tempo real, e o IDS enfileira a carga para não
 descartar pacotes, com pico de fila próximo de 0,5~milhão de fluxos, latência
-média de 120~s no binário e 352~s no hierárquico, e RAM em torno de 2,6~GB. A
-Fase~2 triplica a latência, eleva a CPU média de 12\% para 40\% e a potência em
+média de 116~s no binário e 343~s no hierárquico, e RAM em torno de 2,6~GB. A
+Fase~2 triplica a latência, eleva a CPU média de 12\% para 42\% e a potência em
 cerca de 50\%. Some-se a esses o desvio entre o tráfego de treino e o de produção,
 que induz falsos positivos mitigados pela inclusão de tráfego benigno real no
 treino e por uma guarda de pacote mínimo. Toda a validação foi

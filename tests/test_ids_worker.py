@@ -92,6 +92,50 @@ def test_stop_bounds_drain_and_reports_residual():
     assert w.processed < 200    # não processou tudo
 
 
+def test_full_drain_processes_everything_despite_slow_consumer():
+    # stop(join_timeout=None) deve drenar a fila por COMPLETO, sem descartar
+    # nada, mesmo com um consumidor lento e backlog acumulado (residual = 0).
+    seen = []
+    lock = threading.Lock()
+
+    def process_batch(batch):
+        time.sleep(0.05)
+        with lock:
+            seen.extend(f["id"] for _, f in batch)
+
+    w = FlowInferenceWorker(process_batch, max_batch=8)
+    w.start()
+    for i in range(300):
+        w.submit({"id": i})
+    residual = w.stop(join_timeout=None)
+
+    assert residual == 0
+    assert sorted(seen) == list(range(300))
+    assert w.processed == 300
+
+
+def test_full_drain_stall_guard_aborts_when_wedged():
+    # Se a inferência emperrar de vez (consumidor travado), o dreno completo não
+    # pode ficar preso para sempre: a guarda de estagnação aborta e devolve o
+    # residual. stall_limit curto para o teste ser rápido.
+    wedged = threading.Event()
+
+    def process_batch(batch):
+        wedged.wait(timeout=30)  # trava indefinidamente (dentro do teste)
+
+    w = FlowInferenceWorker(process_batch, max_batch=1)
+    w.start()
+    for i in range(50):
+        w.submit({"id": i})
+    t0 = time.perf_counter()
+    residual = w.stop(join_timeout=None, stall_limit=1.0)
+    elapsed = time.perf_counter() - t0
+    wedged.set()
+
+    assert elapsed < 10.0   # não trava para sempre
+    assert residual > 0     # sobrou backlog: o dreno foi abortado por estagnação
+
+
 def test_submit_does_not_block_on_slow_consumer():
     def process_batch(batch):
         time.sleep(0.05)

@@ -86,21 +86,57 @@ class FlowInferenceWorker:
             with self._lock:
                 self.processed += len(batch)
 
-    def stop(self, join_timeout: float = 30.0) -> int:
-        """Sinaliza parada, drena por até join_timeout e junta a thread.
+    def stop(self, join_timeout: float | None = 30.0,
+             stall_limit: float = 180.0) -> int:
+        """Sinaliza parada, drena a fila e junta a thread.
 
         Deve ser chamado DEPOIS de a captura ter feito flush_all (que enfileira
-        os últimos fluxos). Sob flood o backlog pode não caber em join_timeout;
-        nesse caso o dreno é abortado (o restante não é logado) para o
-        encerramento não travar. Retorna o backlog residual não processado."""
+        os últimos fluxos). Retorna o backlog residual não processado.
+
+        Com join_timeout numérico o dreno é limitado: sob flood o backlog pode
+        não caber no prazo e o que sobrar é abortado (não logado) para o
+        encerramento não travar.
+
+        Com join_timeout=None o dreno é COMPLETO: espera a fila esvaziar por
+        inteiro, sem descartar nada. Um detector de estagnação aborta apenas se
+        a fila parar de diminuir por stall_limit segundos seguidos, para o
+        encerramento não travar caso a inferência emperre de vez."""
         self._stop.set()
-        if self._thread:
+        if not self._thread:
+            return self._q.qsize()
+
+        if join_timeout is not None:
             self._thread.join(timeout=join_timeout)
             if self._thread.is_alive():
                 # Dreno estourou o tempo: aborta para não escrever depois do
                 # [SUMMARY] nem segurar o processo indefinidamente.
                 self._abort.set()
                 self._thread.join(timeout=5.0)
+            return self._q.qsize()
+
+        # Dreno completo: só sai quando a fila zera (thread encerra sozinha ao
+        # ver a fila vazia com _stop setado). Guarda de estagnação como rede de
+        # segurança: se o backlog não cair por stall_limit segundos, aborta.
+        step = min(5.0, stall_limit)
+        last_depth = self._q.qsize()
+        stalled = 0.0
+        while self._thread.is_alive():
+            self._thread.join(timeout=step)
+            if not self._thread.is_alive():
+                break
+            depth = self._q.qsize()
+            if depth < last_depth:
+                stalled = 0.0
+                last_depth = depth
+                log.info("Dreno de encerramento: %d fluxos restantes na fila.", depth)
+            else:
+                stalled += step
+                if stalled >= stall_limit:
+                    log.error("Dreno estagnado em %d fluxos por %.0fs — abortando.",
+                              depth, stalled)
+                    self._abort.set()
+                    self._thread.join(timeout=5.0)
+                    break
         return self._q.qsize()
 
     def queue_depth(self) -> int:

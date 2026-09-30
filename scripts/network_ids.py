@@ -624,12 +624,13 @@ def main() -> None:
         # últimos fluxos; só então drenamos o worker, para não perder nada.
         handle.stop()
         log.info("Interrupted — stopping capture, draining inference queue.")
-        # Dreno limitado: sob flood o backlog pode levar minutos para esvaziar.
-        # Drenamos por até 60s e gravamos o [SUMMARY] com o residual, em vez de
-        # travar o encerramento (e ser morto sem [SUMMARY]).
-        residual = _worker.stop(join_timeout=60.0)
+        # Dreno completo: espera a fila esvaziar por inteiro antes do [SUMMARY],
+        # para que todo fluxo capturado seja avaliado (residual = 0). Sob flood
+        # isso pode levar minutos; a guarda de estagnação do worker aborta só se
+        # a inferência emperrar de vez. A carência do runner acompanha esse prazo.
+        residual = _worker.stop(join_timeout=None)
         if residual:
-            log.warning("Encerrado com %d fluxos ainda na fila (backlog residual, não logados).", residual)
+            log.warning("Encerrado com %d fluxos ainda na fila (dreno abortado por estagnação).", residual)
         stop_printer.set()
         printer_thread.join(timeout=3)
         _finalize_report()

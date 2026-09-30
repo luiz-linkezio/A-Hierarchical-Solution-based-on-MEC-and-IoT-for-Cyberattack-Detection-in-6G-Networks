@@ -705,7 +705,7 @@ def print_energy_report(energy: dict, inference: dict, p_idle: float, p_max: flo
         print(f"    {inference['mj_per_flow']:.4f} mJ/flow × {inference['flows']} flows "
               f"= {inference['total_j']:.2f} J ({inference['pct_of_session_energy']:.2f}% da energia total)")
     else:
-        print("\n  Energia de inferência    : [sem bloco SUMMARY — sessão não finalizada graciosamente]")
+        print("\n  Energia de inferência    : [indisponível — bloco [SUMMARY] ausente ou sem agregados de latência/CPU]")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -848,6 +848,11 @@ def main():
     energy = compute_session_energy(samples, energy_windows, p_idle, p_max)
     band = energy_band(samples, energy_windows, power_model) if energy else {}
     summary_block = parse_summary_block(args.ids)
+    # A energia de inferência aproximada por avg_e2e_ms é inválida sob o worker
+    # desacoplado: e2e inclui a espera na fila (dezenas a centenas de s), não o
+    # tempo de inferência por fluxo, então multiplicá-la por fluxo estoura a
+    # energia da sessão. Fica desativada (o formato do [SUMMARY] não traz
+    # cpu_avg_pct, o que já a mantinha nula); ver nota no relatório de energia.
     inference_energy = (
         compute_inference_energy(summary_block, energy["total_energy_j"], p_idle, p_max)
         if energy else {}

@@ -72,14 +72,15 @@ stop_ids() {
   if [ -z "$pid" ]; then echo "[!] sem PID do IDS ${name} (já parado?)"; return 0; fi
   echo "encerrando IDS ${name} (PID ${pid}) com SIGINT..."
   vsudo "kill -INT ${pid} 2>/dev/null || true"
-  # Carência longa: sob flood o worker pode ter um backlog grande de fluxos na
-  # fila; ele precisa drená-lo e gravar o [SUMMARY] antes de sair. 15s não
-  # bastava e o IDS acabava morto à força, sem [SUMMARY].
-  for _ in $(seq 1 120); do
+  # Carência longa: no SIGINT o worker faz um DRENO COMPLETO da fila (residual =
+  # 0) antes de gravar o [SUMMARY], e sob flood o backlog pode levar vários
+  # minutos para esvaziar. Esperamos até 1200s para não matá-lo no meio do
+  # dreno; o próprio worker tem guarda de estagnação para não travar de vez.
+  for _ in $(seq 1 1200); do
     [ "$(ids_alive "$pid")" = DEAD ] && { echo "IDS ${name} parou graciosamente."; return 0; }
     sleep 1
   done
-  echo "[!] IDS ${name} resistiu ao SIGINT (120s) — escalando TERM/KILL"
+  echo "[!] IDS ${name} resistiu ao SIGINT (1200s) — escalando TERM/KILL"
   vsudo "kill -TERM ${pid} 2>/dev/null || true"; sleep 5
   if [ "$(ids_alive "$pid")" = ALIVE ]; then
     vsudo "kill -KILL ${pid} 2>/dev/null; pkill -KILL -f ${ids} 2>/dev/null || true"; sleep 2
