@@ -754,11 +754,11 @@ substancialmente maior e um volume de falsos positivos próximo de zero
 \label{tab:phase1_offline}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Classe} & \textbf{Precisão (\%)} & \textbf{Revocação (\%)} & \textbf{F1 (\%)} & \textbf{Suporte} \\ \midrule
-attack  & 68 & \textbf{96} & 80 & 57.398 \\
-benign  & \textbf{96} & 69 & 80 & 83.314 \\ \midrule
-\textbf{Acurácia} & & & \textbf{80} & 140.712 \\
-Macro avg & 82 & 83 & 80 & \\
+\textbf{Classe} & \textbf{Precisão} & \textbf{Revocação} & \textbf{F1} & \textbf{Suporte} \\ \midrule
+attack  & 68\% & \textbf{96\%} & 80\% & 57.398 \\
+benign  & \textbf{96\%} & 69\% & 80\% & 83.314 \\ \midrule
+\textbf{Acurácia} & & & \textbf{80\%} & 140.712 \\
+Macro avg & 82\% & 83\% & 80\% & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -793,17 +793,17 @@ triagem segue dependendo do alerta binário da Fase~1.
 \label{tab:phase2_offline}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Classe} & \textbf{Precisão (\%)} & \textbf{Revocação (\%)} & \textbf{F1 (\%)} & \textbf{Suporte} \\ \midrule
-benign      & 83 & 69 & 76 & 83.313 \\
-bruteforce  & 20 & 77 & 31 &  2.191 \\
-dos         & \textbf{99} & \textbf{96} & \textbf{98} & 64.582 \\
-malware     & 90 & 78 & 84 & 81.338 \\
-mitm        & 42 & 72 & 53 & 13.823 \\
-recon       & 83 & 68 & 75 & 47.915 \\
-spoofing    & 28 & 73 & 41 & 12.289 \\
-web         & 77 & 84 & 80 & 11.930 \\ \midrule
-\textbf{Acurácia} & & & \textbf{78} & 317.381 \\
-Macro F1    & & & \textbf{67} & \\
+\textbf{Classe} & \textbf{Precisão} & \textbf{Revocação} & \textbf{F1} & \textbf{Suporte} \\ \midrule
+benign      & 83\% & 69\% & 76\% & 83.313 \\
+bruteforce  & 20\% & 77\% & 31\% &  2.191 \\
+dos         & \textbf{99\%} & \textbf{96\%} & \textbf{98\%} & 64.582 \\
+malware     & 90\% & 78\% & 84\% & 81.338 \\
+mitm        & 42\% & 72\% & 53\% & 13.823 \\
+recon       & 83\% & 68\% & 75\% & 47.915 \\
+spoofing    & 28\% & 73\% & 41\% & 12.289 \\
+web         & 77\% & 84\% & 80\% & 11.930 \\ \midrule
+\textbf{Acurácia} & & & \textbf{78\%} & 317.381 \\
+Macro F1    & & & \textbf{67\%} & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1217,13 +1217,13 @@ centenas de fluxos benignos em captura saturada de \textit{flood}).}
 \label{tab:bin_metrics}
 \begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Métrica (\%)} & \textbf{Estrita} & \textbf{Calibrada ($+2$~s)} \\ \midrule
-Acurácia            & 63,1 & \textbf{64,4} \\
-Precisão            & 95,5 & \textbf{98,4} \\
-Revocação / TPR     & 64,0 & \textbf{64,3} \\
-F1-score            & 76,6 & \textbf{77,8} \\
-FPR                 & 51,2 & 33,2 \\
-FNR                 & 36,0 & 35,7 \\
+\textbf{Métrica} & \textbf{Estrita} & \textbf{Calibrada ($+2$~s)} \\ \midrule
+Acurácia            & 63,1\% & \textbf{64,4\%} \\
+Precisão            & 95,5\% & \textbf{98,4\%} \\
+Revocação / TPR     & 64,0\% & \textbf{64,3\%} \\
+F1-score            & 76,6\% & \textbf{77,8\%} \\
+FPR                 & 51,2\% & 33,2\% \\
+FNR                 & 36,0\% & 35,7\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1309,14 +1309,14 @@ $+2$~s; ddos unificado a dos).}
 \label{tab:multi_metrics}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
-\textbf{Classe} & \textbf{Sup.} & \textbf{TP} & \textbf{FP} & \textbf{Prec. (\%)} & \textbf{F1 (\%)} \\ \midrule
-recon             &   1.641 &   1.005 &       83 & 92 & \textbf{73,7} \\
-dos (incl.\ ddos) & 625.147 & 330.203 & 113.288 & 74 & 61,8 \\
-spoofing          & 119.873 &       0 &       28 &  0 & 0 \\
-web               &   8.143 &      11 &        0 & 100 & 0,3 \\
-bruteforce        &     256 &       1 &      580 &  0 & 0,2 \\
-mitm              &     116 &       0 &    6.628 &  0 & 0 \\
-malware           &     103 &       1 &   46.222 &  0 & 0 \\ \midrule
+\textbf{Classe} & \textbf{Sup.} & \textbf{TP} & \textbf{FP} & \textbf{Prec.} & \textbf{F1} \\ \midrule
+recon             &   1.641 &   1.005 &       83 & 92\% & \textbf{73,7\%} \\
+dos (incl.\ ddos) & 625.147 & 330.203 & 113.288 & 74\% & 61,8\% \\
+spoofing          & 119.873 &       0 &       28 &  0\% & 0\% \\
+web               &   8.143 &      11 &        0 & 100\% & 0,3\% \\
+bruteforce        &     256 &       1 &      580 &  0\% & 0,2\% \\
+mitm              &     116 &       0 &    6.628 &  0\% & 0\% \\
+malware           &     103 &       1 &   46.222 &  0\% & 0\% \\ \midrule
 \textbf{Acurácia geral (tipo)} & \multicolumn{5}{r}{\textbf{44,2\%}} \\
 \textbf{Macro F1 (classes de ataque)} & \multicolumn{5}{r}{19,4\%} \\
 \bottomrule
@@ -1448,8 +1448,6 @@ a métrica de especificidade confiável.}
 \multicolumn{3}{l}{\textit{Classificação de tipo (Fase 2)}} \\
 \quad Acurácia (tipo)   & ---             & \textbf{44,2\%} \\
 \quad Macro F1 (ataques) & ---            & 19,4\% \\
-\quad recon F1          & ---             & \textbf{73,7\%} \\
-\quad dos F1            & ---             & 61,8\% \\
 \midrule
 \multicolumn{3}{l}{\textit{Recursos (VIM 4, durante a sessão)}} \\
 \quad CPU média / máx.  & 11,8\% / 44,0\% & \textbf{40,1\% / 73,9\%} \\
