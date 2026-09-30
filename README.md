@@ -20,9 +20,9 @@ The IDS is divided into three hierarchical phases:
 | 2 — Multi-classifier | Edge / MEC host | Attack type (DDoS, DoS, malware, brute-force, …) |
 | 3 — Clustering | Edge / MEC host | Unknown / zero-day threats not covered by Phase 2 |
 
-Phases 1 and 2 are implemented and **validated live on the VIM 4 edge node**
+Phases 1 and 2 are implemented and validated live on the VIM 4 edge node
 (Khadas VIM4, Amlogic A311D2) against eight scripted attack categories — see
-**[`docs/experimentos/2026-06-19-vim4-revalidacao.md`](docs/experimentos/2026-06-19-vim4-revalidacao.md)**.
+**[`docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md`](docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md)**.
 Phase 3 (clustering / zero-day) is future work.
 
 ---
@@ -72,8 +72,9 @@ Because **`.gitignore`** excludes `data/`, each clone must populate this tree lo
 Real-time IDS and the live-validation toolchain (run on the VIM 4 edge node and on the attacker PC):
 
 - **`scripts/run_experiment.sh`** — **One-command live validation.** Runs on the PC and orchestrates the whole experiment over SSH: deploys scripts/models to the VIM 4, brings up an HTTP service, runs Session A (binary IDS) and Session B (binary+multiclass IDS) under an identical attack script with idle baselines and inter-attack gaps, tears everything down, and computes the metrics. No secrets in the file (sudo password read from `$VIM4_PASS`).
-- **`scripts/network_binary_ids.py`** — Real-time **Phase 1** IDS for VIM 4. Captures live flows via `netflower`'s `capture_live` (emitting each flow on TCP FIN/RST or idle timeout) and runs the binary classifier to flag attack traffic. Logs **every** classified flow (verdict ATTACK or BENIGN, with P1 and the flow's own capture timestamp `flow_ts`) and periodic system snapshots (CPU/RAM/net/power/temp/DVFS).
-- **`scripts/network_ids.py`** — Real-time **Phase 1+2** IDS: same capture path, plus the multiclass classifier to label the attack type for flagged flows. Same per-flow log format, with the Phase 2 label/confidence on ATTACK rows.
+- **`scripts/network_binary_ids.py`** — Real-time **Phase 1** IDS for VIM 4. Captures live flows via `netflower`'s `capture_live` (emitting each flow on TCP FIN/RST or idle timeout) and runs the binary classifier to flag attack traffic. Capture and inference are decoupled: the capture callback only enqueues flows and a worker thread classifies them in batches (see `_ids_worker.py`). Logs **every** classified flow (verdict ATTACK or BENIGN, with P1 and the flow's own capture timestamp `flow_ts`) and periodic system snapshots (CPU/RAM/net/power/temp/DVFS, plus the inference queue depth).
+- **`scripts/network_ids.py`** — Real-time **Phase 1+2** IDS: same capture path, plus the multiclass classifier to label the attack type for flagged flows. The worker batches Phase 1 over the whole batch and Phase 2 over the flagged subset. Same per-flow log format, with the Phase 2 label/confidence on ATTACK rows.
+- **`scripts/_ids_worker.py`** — The inference worker shared by both IDS scripts: an unbounded queue plus a single thread that drains it in batches, so packet capture never blocks on model inference. Tracks and reports the peak queue depth and any residual backlog at shutdown.
 - **`scripts/attack_generator.py`** — Generates the eight attack categories (recon, dos, ddos, brute-force, web, mitm, spoofing, malware) against the target, with configurable per-attack duration and idle `--gap`, and writes a JSON report with per-attack time windows (the ground truth for scoring).
 - **`scripts/ids_metrics.py`** — Computes **per-flow** detection metrics (binary 2×2 confusion matrix, per-attack recall, P1 threshold sweep; hierarchical multiclass per-class P/R/F1 and confusion matrix). Each flow is labelled by the attack window in which it *started* (`flow_ts`), not by when the IDS emitted it, so the emission lag of a saturated VIM 4 under flood cannot leak flows into other windows. Since the lab LAN is not isolated, an endpoint filter (`--target-ip`/`--attacker-ips`, filled in by `run_experiment.sh`) keeps background flows that start inside a window — multicast, other LAN hosts, the VIM's own NTP/apt — out of the attack class. Also reports resource usage (CPU/RAM/throughput), and a **calibrated energy estimate with an uncertainty band**, all from the IDS log + attack-generator report.
 - **`scripts/calibrate_power.py`** — Calibrates the energy model on the VIM 4 (idle vs. `stress` benchmark + literature-anchored power envelope), writing `constants/power_model_vim4.json`. The board exposes no power sensor, so energy is an estimate, not a direct measurement.
@@ -137,28 +138,50 @@ then writes `results/session_{a,b}_metrics_<ts>.json`. Drop `--skip-calibration`
 to (re)calibrate the energy model first. Login to the VIM 4 uses an SSH key; the
 sudo password is only read from `$VIM4_PASS` and never stored in the repo.
 
-Detection is scored **per flow**: each classified flow is labelled by the attack
-window in which it *started* (`flow_ts`, the pcap capture time of its first
-packet), never by when the alert was emitted. This is deliberate — under flood
-the ARM node saturates and emits flows with a median delay of 163–216 s, so any
-emission-time or per-second metric leaks alerts into neighbouring windows.
+To keep inference from stalling capture, the IDS decouples the two: `netflower`'s
+capture callback only enqueues each completed flow, and a separate worker thread
+runs the classifiers in batches (Phase 1 over the whole batch, Phase 2 over the
+flagged subset). The queue is unbounded so every captured flow is evaluated even
+when processing falls behind the traffic. Running inference inside the capture
+callback, as an earlier version did, blocked the capture thread under flood and
+the kernel buffer dropped packets.
+
+Detection is scored per flow: each classified flow is labelled by the attack
+window in which it started (`flow_ts`, the pcap capture time of its first
+packet), never by when the alert was emitted. This matters because under flood
+the ARM node cannot keep up and emits flows with a median delay of 180–437 s, so
+any emission-time or per-second metric leaks alerts into neighbouring windows.
 `ids_metrics.py` reports both strict ground-truth windows and a `+2 s`
 calibration (`--window-guard 2`) that corrects the orchestrator's start-logging
 lag; labelling stays on `flow_ts` either way.
 
 Full methodology, artifact descriptions, results, and the issues found during
 execution are documented in
-**[`docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md`](docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md)**
-(the earlier per-second run is kept for history in
+**[`docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md`](docs/experimentos/2026-09-30-vim4-vazao-e-rerun.md)**
+(earlier runs are kept for history in
+[`docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md`](docs/experimentos/2026-09-29-vim4-metrica-por-fluxo.md)
+and
 [`docs/experimentos/2026-06-19-vim4-revalidacao.md`](docs/experimentos/2026-06-19-vim4-revalidacao.md)).
 
-Headline results (run `20260929_144008`, calibrated windows): the binary IDS
-reaches **per-flow precision ≈ 0.99** (recall ≈ 0.81, F1 ≈ 0.89) with near-instant
-detection (0–6 s), strongest on volumetric floods (*spoofing* recall 1.00, *DoS*
-0.84–0.95); low-volume attacks (brute force, MITM, web) produced too few flows to
-be detected. The multiclass IDS classifies *recon* at **F1 = 0.861** while the
-remaining categories collapse onto *dos* in the 55 per-flow features (macro-F1 =
-0.27, a feature-space limitation); Phase 2 adds only **+53 MB RAM** over the
-binary pipeline, with no CPU or energy overhead. The raw false-positive rate is
-not a reliable specificity measure here — the capture is ~99 % flood, so genuine
-benign traffic is a few hundred flows and precision is the trustworthy metric.
+Headline results (run `20260930_014420`, calibrated windows). The binary IDS
+reaches a per-flow precision of about 98% at a recall of 64% (F1 78%), strongest
+on volumetric floods (*spoofing* recall 94%, *DoS* 92%) and weakest on the
+single-packet UDP flood tail: at the operating threshold of 0.9 those flows score
+about 0.81 and fall just below it, which is what pulls recall down. The multiclass
+IDS classifies *recon* at F1 = 74% and *DoS* at 62%, while *spoofing* collapses
+onto *DoS* in the 55 per-flow features (macro-F1 = 19% over the attack classes).
+Brute force (258 flows) and MITM (192 flows, TCP and UDP through the poisoned
+route) are now evaluated; their recall is low because both are low-volume attacks
+the model rarely flags at 0.9.
+
+The main finding is a throughput ceiling. At about 1050 flows/s the VIM 4 cannot
+classify in real time: it queues rather than drops, with an average end-to-end
+latency of 120 s for the binary pipeline and 352 s for the hierarchical one, a
+queue that peaks near half a million flows, and RAM around 2.6 GB. Phase 2 roughly
+triples the latency, raises average CPU from 12% to 40% and average power from
+3.36 W to 5.03 W, and leaves a residual backlog the node never drains. The two
+phases do not fit the edge node's real-time budget under sustained flood, and
+closing that gap (sampling under overload, multiple workers, more capable
+hardware) is left as future work. The raw false-positive rate is not a reliable
+specificity measure here, since the capture is almost all flood and genuine benign
+traffic is only a few hundred flows, so precision is the trustworthy metric.

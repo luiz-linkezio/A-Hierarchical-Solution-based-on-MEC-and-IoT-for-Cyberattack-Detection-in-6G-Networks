@@ -63,20 +63,22 @@ IoT/MEC environments: Phase~1 runs a binary LightGBM classifier on the edge
 node, optimized by the $F_2$-score, and Phase~2 classifies the attack type
 with a multiclass LightGBM, both fed by a pipeline that converts PCAP captures
 from two CIC datasets into a 190~GB SQLite database with \textit{netflower}, a
-flow extractor developed for this project. In a fully scripted testbed
-validation on a VIM~4 edge node covering all eight attack categories, detection
-is scored \emph{per flow}, labelling each flow by the attack window in which it
-started. This metric is independent of the flow-extractor emission delay (median
-163--216~s) that invalidated per-second scoring. The binary IDS reached a
-per-flow precision of $0.99$ (recall $0.81$, F1 $0.89$), reported over both
-strict ground-truth windows and a $+2$~s calibration. Detection was near-instant
-(0--6~s) and strongest on volumetric floods (spoofing recall $1.00$, DoS
-$0.84$--$0.95$), whereas low-volume attacks produced too few flows to be detected
-(brute force, MITM) or were largely missed (web). Phase~2 classified
-reconnaissance at F1 = 0.861 and cost only 53~MB of additional RAM, with no CPU
-or energy overhead, while the remaining categories collapse onto the DoS class
-(macro-F1 = 0.27), exposing a limitation of the 55 per-flow features rather than
-a pipeline fault.
+flow extractor developed for this project. To keep detection from stalling
+packet capture under flooding, inference is decoupled from capture: a separate
+worker consumes flows from an unbounded queue and runs both phases in batches.
+In a fully scripted testbed validation on a VIM~4 edge node covering all eight
+attack categories, detection is scored \emph{per flow}, labelling each flow by
+the attack window in which it started, which makes the metric independent of the
+flow-extractor emission delay (median 180--437~s). Over a calibrated ($+2$~s)
+window the binary IDS reaches a precision of 98\% at a recall of 64\% (F1 78\%),
+strongest on volumetric floods (spoofing 94\%, DoS 92\%) and weaker on DDoS
+(46\%) and low-volume attacks, whose single-packet flows fall below the 0.9
+threshold. Phase~2 separates reconnaissance (F1 74\%) but merges the remaining
+categories onto DoS (macro-F1 19\%). Most consequentially, the measurements
+expose a throughput ceiling: at $\sim$1{,}050 flows/s the VIM~4 cannot process
+traffic in real time and buffers it, with a mean end-to-end latency of 120~s for
+the binary pipeline and 352~s for the hierarchical one, adding Phase~2 roughly
+tripling this latency while raising average power from 3.4 to 5.0~W.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -92,7 +94,7 @@ The massive proliferation of IoT devices expands the cyberattack surface and int
 
 Machine learning (ML)-based IDSs deployed at the network edge have emerged as a promising alternative, capable of classifying network flows in real time and generalizing to unseen attack patterns with low inference overhead~\cite{gyamfi:22}. For instance, classifiers trained on Canadian Institute for Cybersecurity (CIC) IoT datasets have achieved high detection accuracy in \cite{houichi:25,chen:24}. Furthermore, recent works propose collaborative edge-cloud architectures~\cite{yang:23} and two-stage frameworks that filter traffic using a lightweight classifier before activating more computationally intensive models~\cite{aldaej:24}. Despite these advances, critical challenges remain. Most existing studies rely on datasets collected in controlled environments, risking severe distribution shifts when deployed under real network conditions. Many solutions are evaluated in cloud environments, thereby overlooking the strict energy and computational constraints of actual embedded devices. Additionally, the attack heterogeneity, coupled with conflicting optimization objectives, strongly motivates the adoption of hierarchical approaches.
 
-To address these challenges, this work proposes a two-phase hierarchical intrusion detection system (IDS) for IoT/MEC environments. Phase 1 utilizes a lightweight binary classifier to isolate malicious traffic, which then triggers a Phase 2 multiclass classifier to categorize the specific attack type. The primary contributions of this paper include the design of this hierarchical, ML-based architecture, alongside a reproducible, SQLite-based data pipeline optimized for large-scale balanced sampling. Furthermore, this work introduces \textit{NetFlower}, a parallel tool for converting PCAP traces into network flows, which has been made publicly available on PyPI. The final core contribution consists of an experimental validation on a Khadas VIM4 embedded platform under real online traffic, comprehensively evaluating CPU, RAM, energy, and throughput, which shows that the two phases together fit the resource budget of an ARM edge node and empirically identifies the point where the 55 adopted flow features lose their discriminatory effectiveness.
+To address these challenges, this work proposes a two-phase hierarchical intrusion detection system (IDS) for IoT/MEC environments. Phase 1 utilizes a lightweight binary classifier to isolate malicious traffic, which then triggers a Phase 2 multiclass classifier to categorize the specific attack type. The primary contributions of this paper include the design of this hierarchical, ML-based architecture, alongside a reproducible, SQLite-based data pipeline optimized for large-scale balanced sampling. Furthermore, this work introduces \textit{NetFlower}, a parallel tool for converting PCAP traces into network flows, which has been made publicly available on PyPI. The final core contribution consists of an experimental validation on a Khadas VIM4 embedded platform under real online traffic, comprehensively evaluating CPU, RAM, energy, and throughput, which characterizes the throughput ceiling of the hierarchical pipeline on an ARM edge node under volumetric attack and empirically identifies the point where the 55 adopted flow features lose their discriminatory effectiveness.
 
 
 %Intrusion Detection Systems (IDS) based on rules and signatures have been deployed on edge nodes to bring detection closer to IoT devices, achieving high precision on known threats~\cite{lazarevic:05}, but novel attacks or variants match no recorded signature and cross the detector without raising an alert, and keeping the rule set up to date requires constant manual intervention, impractical at the scale foreseen for 6G. Machine-learning IDS running at the edge emerge as an alternative: trained on historical data, they classify flows in real time and generalize to unseen patterns at low inference cost~\cite{gyamfi:22}. Classifiers trained on IoT datasets from the Canadian Institute for Cybersecurity (CIC) achieve high detection accuracy~\cite{houichi:25,chen:24}, collaborative architectures distribute detection between edge and cloud~\cite{yang:23}, and two-stage schemes filter traffic with a lightweight classifier before triggering a more expensive one~\cite{aldaej:24}. Still, data captured in controlled environments induce distribution shift with respect to real traffic, and the diversity of attacks demands distinct optimization objectives per layer, which motivates a hierarchical approach.
@@ -170,7 +172,7 @@ deployed on the edge node for testbed validation.
 
   %we adopt a hierarchical two-stage architecture in which each stage is optimized for a distinct objective. Phase~1 performs lightweight binary intrusion detection, prioritizing high recall to minimize the likelihood of attacks being missed. Phase~2 is a multiclass classifier that is activated only for flows identified as malicious by Phase~1 and prioritizes high per-class precision for attack categorization.
 Since most traffic in any network is benign, applying a heavy classifier to
-every flow would unnecessarily increase energy consumption and overload edge-node resources. Thus, we adopted the hierarchical two-stage architecture of Fig.~\ref{fig:architecture}, in which each stage focuses on a distinct objective: binary detection favors recall, so that attacks do not slip through, while type classification favors per-class precision. Phase~1 employs a binary LightGBM classifier to distinguish between \textit{benign} and \textit{malicious} traffic at minimal cost while processing all flows captured at the network interface. Phase~2 is invoked only when the attack probability estimated by Phase~1 exceeds a predefined decision threshold, identifying the corresponding attack category. Otherwise the flow is discarded without additional processing, preventing the large volume of legitimate traffic from reaching the second classifier. The computational overhead of Phase~2 is therefore incurred only for suspicious flows, and its marginal cost remains amortized by the flow extraction process, which dominates the overall processing time (Section~\ref{sec:results}).
+every flow would unnecessarily increase energy consumption and overload edge-node resources. Thus, we adopted the hierarchical two-stage architecture of Fig.~\ref{fig:architecture}, in which each stage focuses on a distinct objective: binary detection favors recall, so that attacks do not slip through, while type classification favors per-class precision. Phase~1 employs a binary LightGBM classifier to distinguish between \textit{benign} and \textit{malicious} traffic at minimal cost while processing all flows captured at the network interface. Phase~2 is invoked only when the attack probability estimated by Phase~1 exceeds a predefined decision threshold, identifying the corresponding attack category. Otherwise the flow is discarded without additional processing, preventing the large volume of legitimate traffic from reaching the second classifier. The computational overhead of Phase~2 is therefore incurred only for suspicious flows. To keep inference from stalling packet capture under flooding, the capture thread only enqueues completed flows, while a separate worker drains the queue and runs Phase~1 on each batch and Phase~2 on the subset it flags. The queue is unbounded, so no captured flow is dropped, which turns overload into latency and memory rather than packet loss, as quantified in Section~\ref{sec:results}.
 
  
 
@@ -291,11 +293,11 @@ Starting from the 83 raw features generated by \textit{NetFlower}, a preprocessi
 
 The models comprising the two phases were trained independently using the SQLite database as the data source. The hyperparameters were optimized with Optuna, while class-balanced samples were extracted directly from the disk, avoiding the need to load the entire dataset into memory.
 
-\subsubsection{Phase 1 - Binary classifier} The binary classifier was trained using 615,317 benign flows and all 554,795 attack flows. After duplicate removal, the resulting dataset comprised 703,558 unique instances, which were partitioned into training and test sets using a stratified 80/20 split. Hyperparameters and the decision threshold were jointly optimized with Optuna by maximizing the $F_2$-score, which assigns four times greater importance to recall than to precision, reflecting the significantly higher security cost of false negatives compared with false positives. Evaluation on the test set (140,712 flows) using the optimal decision threshold of 0.157 yielded an accuracy of 80\%, an attack recall of 0.96, a precision of 0.68, and an $F_2$ score of 0.886. Although this threshold provides interesting accuracy, recall, and  $F_2$ score, the resulting false-positive ratio, approximately one false alarm for every three alerts, is impractical for deployment in production environments. Therefore, the decision threshold was increased to 0.9 for operational use, sacrificing a small amount of recall to substantially reduce false positives (see Section~\ref{sec:results}).
+\subsubsection{Phase 1 - Binary classifier} The binary classifier was trained using 615,317 benign flows and all 554,795 attack flows. After duplicate removal, the resulting dataset comprised 703,558 unique instances, which were partitioned into training and test sets using a stratified 80/20 split. Hyperparameters and the decision threshold were jointly optimized with Optuna by maximizing the $F_2$-score, which assigns four times greater importance to recall than to precision, reflecting the significantly higher security cost of false negatives compared with false positives. Evaluation on the test set (140,712 flows) using the optimal decision threshold of 0.157 yielded an accuracy of 80\%, an attack recall of 96\%, a precision of 68\%, and an $F_2$ score of 88.6\%. Although this threshold provides interesting accuracy, recall, and  $F_2$ score, the resulting false-positive ratio, approximately one false alarm for every three alerts, is impractical for deployment in production environments. Therefore, the decision threshold was increased to 0.9 for operational use, sacrificing a small amount of recall to substantially reduce false positives (see Section~\ref{sec:results}).
 
 \subsubsection{Phase 2 - Multiclass classifier}
 The multiclass classifier was trained using independently sampled data, with the number of flows per attack category capped at 615,317. We applied  \texttt{class\_weight=balanced} to compensate for the scarcity of the \texttt{bruteforce} attack ($\sim$16k samples), while Optuna targeted the macro $F_1$ metric to weigh all classes equally. Table~\ref{tab:phase2_offline} summarizes the classifier performance considering the test set (317,381 flows), illustrating an offline baseline pattern that later intensifies on the physical testbed.
-Specifically, \texttt{dos} traffic achieves near perfect classification ($F_1 = 0.98$), whereas \texttt{bruteforce}, \texttt{spoofing}, and \texttt{mitm} display low precision (0.20, 0.28, and 0.42) paired with high recall (0.72--0.77) driven by class balancing. A macro $F_1$ score of 0.67 confirms that features extracted from an individual flow isolate attacks with distinct structural signatures effectively but perform poorly against volumetric floods.
+Specifically, \texttt{dos} traffic achieves near perfect classification ($F_1 = 98\%$), whereas \texttt{bruteforce}, \texttt{spoofing}, and \texttt{mitm} display low precision (20\%, 28\%, and 42\%) paired with high recall (72--77\%) driven by class balancing. A macro $F_1$ score of 67\% confirms that features extracted from an individual flow isolate attacks with distinct structural signatures effectively but perform poorly against volumetric floods.
 
 
 %The multiclass classifier was trained using independently sampled data, with the number of flows per attack category capped at 615,317 to limit class imbalance. Additionally, the \texttt{class_weight=balanced} option was adopted to compensate for the scarcity of the \texttt{bruteforce} class (approximately 16,000 samples). Hyperparameters were optimized with Optuna by maximizing the macro-F
@@ -313,17 +315,17 @@ Specifically, \texttt{dos} traffic achieves near perfect classification ($F_1 = 
 \footnotesize
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Support} \\ \midrule
-benign      & 0.83 & 0.69 & 0.76 & 83{,}313 \\
-bruteforce  & 0.20 & 0.77 & 0.31 &  2{,}191 \\
-dos         & \textbf{0.99} & \textbf{0.96} & \textbf{0.98} & 64{,}582 \\
-malware     & 0.90 & 0.78 & 0.84 & 81{,}338 \\
-mitm        & 0.42 & 0.72 & 0.53 & 13{,}823 \\
-recon       & 0.83 & 0.68 & 0.75 & 47{,}915 \\
-spoofing    & 0.28 & 0.73 & 0.41 & 12{,}289 \\
-web         & 0.77 & 0.84 & 0.80 & 11{,}930 \\ \midrule
-\textbf{Accuracy} & & & \textbf{0.78} & 317{,}381 \\
-Macro F1    & & & \textbf{0.67} & \\
+\textbf{Class} & \textbf{Precision (\%)} & \textbf{Recall (\%)} & \textbf{F1 (\%)} & \textbf{Support} \\ \midrule
+benign      & 83 & 69 & 76 & 83{,}313 \\
+bruteforce  & 20 & 77 & 31 &  2{,}191 \\
+dos         & \textbf{99} & \textbf{96} & \textbf{98} & 64{,}582 \\
+malware     & 90 & 78 & 84 & 81{,}338 \\
+mitm        & 42 & 72 & 53 & 13{,}823 \\
+recon       & 83 & 68 & 75 & 47{,}915 \\
+spoofing    & 28 & 73 & 41 & 12{,}289 \\
+web         & 77 & 84 & 80 & 11{,}930 \\ \midrule
+\textbf{Accuracy} & & & \textbf{78} & 317{,}381 \\
+Macro F1    & & & \textbf{67} & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -331,17 +333,20 @@ Macro F1    & & & \textbf{0.67} & \\
 \subsection{Testbed validation: environment and protocol}
 \label{subsec:validation}
 
-The experimental validation was conducted using two machines connected through an isolated Gigabit Ethernet local network: a personal computer - PC (AMD Ryzen~5 7600, 32~GB DDR5 RAM, and an NVIDIA RTX~5070 GPU) and a Khadas VIM~4 board. The former was responsible for training the machine learning models (LightGBM on CPU), orchestrating the experiments via SSH, and generating attack traffic targeting the Khadas VIM~4. The latter served as the MEC node, executing the IDS on its \texttt{eth0} network interface. The Khadas VIM~4 is a low-cost edge computing platform suitable for IoT/MEC deployments, equipped with an Amlogic A311D2 system-on-chip (SoC) featuring eight heterogeneous ARM cores (4× Cortex-A73 at 2.2~GHz and 4× Cortex-A53 at 1.8~GHz), 8~GB of LPDDR4x RAM, and a 2.5--9~W power envelope.
+The experimental validation was conducted using two machines connected to the same Gigabit Ethernet local network, shared with other hosts: a personal computer - PC (AMD Ryzen~5 7600, 32~GB DDR5 RAM, and an NVIDIA RTX~5070 GPU) and a Khadas VIM~4 board. The former was responsible for training the machine learning models (LightGBM on CPU), orchestrating the experiments via SSH, and generating attack traffic targeting the Khadas VIM~4. The latter served as the MEC node, executing the IDS on its \texttt{eth0} network interface. The Khadas VIM~4 is a low-cost edge computing platform suitable for IoT/MEC deployments, equipped with an Amlogic A311D2 system-on-chip (SoC) featuring eight heterogeneous ARM cores (4× Cortex-A73 at 2.2~GHz and 4× Cortex-A53 at 1.8~GHz), 8~GB of LPDDR4x RAM, and a 2.5--9~W power envelope.
 
 %The validation involved two machines in an isolated Gigabit Ethernet local network: a personal computer (AMD Ryzen~5 7600, 32~GB DDR5, NVIDIA RTX~5070) and the Khadas VIM~4 board. The former was used to train the models (LightGBM on CPU), orchestrate the experiment over SSH, and generate  attacks targeting the Khadas VIM~4 board. The latter represents a MEC node and run the IDS at \texttt{eth0} interface. The VIM~4 gathers, in a low-cost single-board computer, the attributes of an access MEC node for IoT scenarios: an Amlogic A311D2 SoC with eight heterogeneous ARM cores (4$\times$ Cortex-A73 at 2.2~GHz and 4$\times$ Cortex-A53 at 1.8~GHz), 8~GB of LPDDR4x RAM and a 2.5--9~W power envelope.
 
 On the PC, the orchestrator (\texttt{run\_experiment.sh}) deploys the scripts to the VIM~4 via SSH, coordinates the evaluation sessions and triggers the computation of the performance metrics. The attack generator (\texttt{attack\_generator.py}) sequentially executes the eight attack categories and produces a JSON report containing the time intervals associated with each attack, which serves as the ground-truth reference. The metrics script then correlates this report with the IDS logs collected from the VIM~4 to compute the detection metrics. 
 On the VIM~4, the IDS (\texttt{network\_ids.py}) executes Phase~1 and, when enabled, Phase~2, logging per-flow detection events together with periodic snapshots of CPU utilization, memory usage, processor temperature, and operating frequency, from which the computational cost metrics are derived. The attacks use real tools, including 
 nmap and masscan (SYN, UDP and aggressive scans), hping3 (SYN/UDP/ICMP floods, DDoS with random sources and spoofing with a forged source), medusa (SSH/HTTP/Telnet brute force), nikto and gobuster (web scanning and enumeration), curl (HTTP flood), arpspoof (bidirectional ARP poisoning for
-MITM), and netcat (simulated C2 beacon). 
+MITM), and netcat (simulated C2 beacon). Brute force runs medusa over several
+usernames and a generated password list, and the MITM step drives TCP and UDP
+traffic through the poisoned route so that \textit{netflower}, which parses only
+TCP and UDP, records it as flows.
 
-The proposed approach is evaluated through two sequential sessions executed under the same script: Session~A enables only the binary IDS (Phase~1), whereas Session~B activates both classifiers (Phases~1 and~2), which isolates the incremental resource cost of the second phase. Each session begins and ends with a 60~s benign baseline period and includes a 120~s idle interval between consecutive attacks, ensuring that all flows associated with one attack are fully processed before the next attack window begins (Section~\ref{subsec:res_artifacts}).
-The binary classifier adopts a decision threshold of $P_1 \geq 0.9$. Detection is scored \emph{per flow}: each classified flow is labelled attack or benign according to the ground-truth window in which it \emph{started} (\texttt{flow\_ts}, the capture time of its first packet), never by when the alert was emitted. This is deliberate: under flooding the ARM node saturates and emits flows with a median delay of 163~s (Section~\ref{subsec:res_artifacts}), so any emission-anchored metric contaminates neighbouring seconds and windows. Two window definitions are reported: \emph{strict}, using the orchestrator's recorded start/end times, and \emph{calibrated} ($+2$~s), which widens each window by 2~s per side to correct a systematic lag. The orchestrator records \texttt{start\_time} after the attack tool is already sending, so the first attack flows begin up to $\sim$2~s before the logged instant, and 88\% of the strict false positives are exactly such real attack flows that the $+2$~s slack reabsorbs (the correction saturates at 2~s). Labelling remains by \texttt{flow\_ts}, without reintroducing emission time. For the multiclass classifier, the predicted category is the Phase~2 label when Phase~1 alerts, and benign otherwise. In addition to detection metrics, CPU utilization, RAM usage, alert throughput, and estimated energy consumption are reported for all experiments.
+The proposed approach is evaluated through two sequential sessions executed under the same script: Session~A enables only the binary IDS (Phase~1), whereas Session~B activates both classifiers (Phases~1 and~2), which isolates the incremental resource cost of the second phase. Each session begins and ends with a 60~s benign baseline period and includes a 120~s idle interval between consecutive attacks, which keeps the attack windows apart (labelling by flow start does not depend on this gap).
+The binary classifier adopts a decision threshold of $P_1 \geq 0.9$. Detection is scored \emph{per flow}: each classified flow is labelled attack or benign according to the ground-truth window in which it \emph{started} (\texttt{flow\_ts}, the capture time of its first packet), never by when the alert was emitted. This is deliberate: under flooding the ARM node saturates and emits flows with a median delay of 180--437~s (Section~\ref{subsec:res_artifacts}), so any emission-anchored metric contaminates neighbouring seconds and windows. Two window definitions are reported: \emph{strict}, using the orchestrator's recorded start/end times, and \emph{calibrated} ($+2$~s), which widens each window by 2~s per side to correct a systematic lag. The orchestrator records \texttt{start\_time} after the attack tool is already sending, so the first attack flows begin up to $\sim$2~s before the logged instant, and 88\% of the strict false positives are exactly such real attack flows that the $+2$~s slack reabsorbs (the correction saturates at 2~s). Labelling remains by \texttt{flow\_ts}, without reintroducing emission time. For the multiclass classifier, the predicted category is the Phase~2 label when Phase~1 alerts, and benign otherwise. In addition to detection metrics, CPU utilization, RAM usage, alert throughput, and estimated energy consumption are reported for all experiments.
 
 %─────────────────────────────────────────────────────────────────────────────
 \section{Results}
@@ -352,7 +357,7 @@ This section presents the experimental evaluation of the proposed hierarchical I
 \subsection{Binary IDS (Phase 1)}
 \label{subsec:res_bin}
 
-Table~\ref{tab:bin_metrics} summarizes the binary-IDS results under the per-flow metric, over both strict and calibrated ($+2$~s) ground-truth windows. Under the calibrated window the detector reaches a precision of 0.986, a recall of 0.809 and an F1 of 0.889. Under the strict window, these become 0.890, 0.792 and 0.838. Precision is the reliable specificity measure in this testbed: as the capture is dominated by flooding ($\sim$99\% of flows are attack), genuinely benign traffic amounts to only a few hundred flows, so the FPR (0.607 calibrated; 0.926 strict) inherits a tiny, noisy denominator and is not comparable to an FPR measured on a clean benign baseline.
+Table~\ref{tab:bin_metrics} summarizes the binary-IDS results under the per-flow metric, over both strict and calibrated ($+2$~s) ground-truth windows. Under the calibrated window the detector reaches a precision of 98.4\%, a recall of 64.3\% and an F1 of 77.8\%. Under the strict window, these become 96.9\%, 64.0\% and 77.1\%. Precision is the reliable specificity measure in this testbed: as the capture is dominated by flooding ($\sim$99\% of flows are attack), genuinely benign traffic amounts to only a few hundred flows, so the FPR (33.2\% calibrated, 49.2\% strict) inherits a tiny, noisy denominator and is not comparable to an FPR measured on a clean benign baseline. The recall of 64\% reflects the operating threshold rather than a weak model: the single-packet UDP flows produced by the UDP floods score around 0.807, just below the 0.9 threshold, and count as misses.
 
 \begin{table}[t]
 \centering
@@ -364,62 +369,63 @@ flood-saturated capture).}
 \footnotesize
 \begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Metric} & \textbf{Strict} & \textbf{Calibrated ($+2$~s)} \\ \midrule
-Accuracy        & 0.723 & \textbf{0.801} \\
-Precision       & 0.890 & \textbf{0.986} \\
-Recall / TPR    & 0.792 & \textbf{0.809} \\
-F1-score        & 0.838 & \textbf{0.889} \\
-FPR             & 0.926 & 0.607 \\
-FNR             & 0.208 & 0.191 \\
+\textbf{Metric (\%)} & \textbf{Strict} & \textbf{Calibrated ($+2$~s)} \\ \midrule
+Accuracy        & 63.5 & \textbf{64.4} \\
+Precision       & 96.9 & \textbf{98.4} \\
+Recall / TPR    & 64.0 & \textbf{64.3} \\
+F1-score        & 77.1 & \textbf{77.8} \\
+FPR             & 49.2 & 33.2 \\
+FNR             & 36.0 & 35.7 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:detection_rate} shows that recall is unevenly distributed. Volumetric floods are detected robustly (spoofing at 100\% of flows and DoS at 84\%), while DDoS drops to 47\% under the highest packet rate, and recon reaches 58\% because nmap's UDP scan emits too few packets per port to accumulate features before the flow expires (30~s \texttt{idle\_timeout}). Three categories barely manifest in the testbed: brute force (26 flows) and MITM (4 flows) produced too little traffic and were undetected, web was largely missed (3\%), and malware generated no target-directed flow.
+Table~\ref{tab:detection_rate} shows that recall is unevenly distributed across attack types. Volumetric floods carrying a mix of TCP and UDP are detected well (spoofing 94.0\% and DoS 92.2\% of flows), but DDoS drops to 46.1\% because its random-source flood is dominated by single-packet UDP flows that score just below the threshold, and reconnaissance reaches 57.4\% because nmap's UDP scan emits too few packets per port to accumulate features before the flow expires (30~s \texttt{idle\_timeout}). Low-volume attacks are largely missed at this threshold: brute force 14.0\%, MITM 10.4\%, web 0.7\% and malware 2.9\%. These categories generate few flows by nature (brute force 258, MITM 192, malware 103), so their rates rest on small samples rather than on a generator artifact.
 
 \begin{table}[t]
 \centering
-\caption{Per-flow recall per attack type — binary IDS, calibrated ($+2$~s) window. Malware generated no flows.}
+\caption{Per-flow recall per attack type, binary IDS, calibrated ($+2$~s) window (Section~\ref{subsec:res_bin}).}
 \label{tab:detection_rate}
 \footnotesize
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-\textbf{Attack} & \textbf{Flows} & \textbf{Detected} & \textbf{Recall} \\ \midrule
-spoofing          & 32{,}616 & 32{,}616 & \textbf{100.0\%} \\
-dos               & 32{,}134 & 27{,}004 & 84.0\% \\
-ddos              & 18{,}202 &  8{,}507 & 46.7\% \\
-recon             &  3{,}659 &  2{,}114 & 57.8\% \\
-web               &    240 &      8 & 3.3\% \\
-bruteforce        &     26 &      0 & 0.0\% \\
-mitm              &      4 &      0 & 0.0\% \\
-malware           &      0 &      0 & — \\ \bottomrule
+\textbf{Attack} & \textbf{Flows} & \textbf{Detected} & \textbf{Recall (\%)} \\ \midrule
+spoofing          & 152{,}698 & 143{,}524 & \textbf{94.0} \\
+dos               & 167{,}322 & 154{,}319 & 92.2 \\
+ddos              & 473{,}821 & 218{,}579 & 46.1 \\
+recon             &   3{,}684 &   2{,}113 & 57.4 \\
+bruteforce        &      258 &      36 & 14.0 \\
+mitm              &      192 &      20 & 10.4 \\
+malware           &      103 &       3 & 2.9 \\
+web               &   8{,}154 &      54 & 0.7 \\ \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Multiclass IDS (Phases 1+2)}
 \label{subsec:res_multi}
 
-Not all eight classes produced enough traffic for a type evaluation. Volumetric floods (DoS, DDoS, spoofing) and recon dominate the flows, while brute force (8 flows), MITM (3) and malware (0) barely manifested, for the low-volume reasons of Section~\ref{subsec:res_bin}. The per-class performance (Table~\ref{tab:multi_metrics}) reveals two regimes: Phase~2 classifies \texttt{recon} well (F1 = 0.861), but \texttt{web}, \texttt{bruteforce}, \texttt{mitm} and \texttt{spoofing} collapse onto \texttt{dos}, which absorbs nearly all attack flows (recall 0.96, precision only 0.62, lowered chiefly by the 16{,}528 spoofing flows labelled \texttt{dos}). Type accuracy is 60.5\% (45.4\% strict) and macro-F1 is 0.269. Restricted to the flows Phase~1 actually detected, type accuracy rises to 63\%.
+All eight categories now generate flows (Table~\ref{tab:multi_metrics}). Phase~2 classifies \texttt{recon} well (F1 = 73.7\%), whereas the other attacks collapse onto \texttt{dos}, which absorbs most attack flows (precision 74.5\%, recall 52.8\%, F1 61.8\%). The 119{,}873 spoofing flows are labelled \texttt{dos} almost in full, and web, brute force, MITM and malware are essentially never assigned their own class. Type accuracy is 44.2\% (43.1\% strict) and macro-F1 over the attack classes is 19.4\%. Restricted to the flows Phase~1 detected, type accuracy rises to 68.6\%.
 
-The type label is therefore useful for identifying reconnaissance scans, but it does not separate the remaining attacks from generic flooding traffic, leaving triage dependent on Phase~1 binary alerts. Two complementary factors explain this behavior. The first is the feature space itself: within the 55 per-flow attributes, short, high-rate flows are statistically indistinguishable from flooding traffic. For \texttt{spoofing}, the classification as \texttt{dos} is in fact appropriate, as the attack is a forged-source flood. Distinguishing the remaining attack types would require information aggregated across multiple flows, such as authentication-failure counts or source-IP diversity, absent by construction from per-flow features. The second factor, for \texttt{web}, \texttt{bruteforce} and \texttt{mitm}, is the combination of low volume with the training-to-production distribution shift: offline (Table~\ref{tab:phase2_offline}) the model achieves F1 of 0.80, 0.53 and 0.31 for these classes, but live they produced very few flows (web was mostly labelled benign, and brute force and MITM barely manifested), preventing a robust type evaluation.
+The type label thus identifies reconnaissance scans but does not separate the other attacks from generic flooding. Within the 55 per-flow attributes, short, high-rate flows are statistically indistinguishable from a flood. For \texttt{spoofing} the \texttt{dos} label is in fact appropriate, since the attack is a forged-source flood. Separating the rest would require state aggregated across flows, such as authentication-failure counts or source-IP diversity, which per-flow features lack by construction.
 
 \begin{table}[t]
 \centering
-\caption{Multiclass IDS in the testbed (calibrated $+2$~s window; ddos merged into dos). Malware generated no flows.}
+\caption{Multiclass IDS in the testbed (calibrated $+2$~s window; dos includes ddos).}
 \label{tab:multi_metrics}
 \footnotesize
-\begin{tabular}{@{}lrrrrr@{}}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Class} & \textbf{Sup.} & \textbf{TP} & \textbf{FP} & \textbf{Prec.} & \textbf{F1} \\ \midrule
-recon             &  1{,}320 &  1{,}005 &      9 & 0.99 & \textbf{0.861} \\
-dos (incl.\ ddos) & 28{,}623 & 27{,}479 & 16{,}894 & 0.62 & 0.753 \\
-spoofing          & 16{,}528 &      0 &      1 & 0.00 & 0.000 \\
-web               &    240 &      0 &      0 & 0.00 & 0.000 \\
-bruteforce        &      8 &      0 &     74 & 0.00 & 0.000 \\
-mitm              &      3 &      0 &     20 & 0.00 & 0.000 \\
-malware           &      0 &      0 &     37 & —   & 0.000 \\ \midrule
-\textbf{Overall (type) accuracy} & \multicolumn{5}{r}{\textbf{60.5\%} (45.4\% strict)} \\
-\textbf{Macro F1} & \multicolumn{5}{r}{0.269} \\
+\textbf{Class} & \textbf{Sup.} & \textbf{Prec.\,(\%)} & \textbf{Rec.\,(\%)} & \textbf{F1\,(\%)} \\ \midrule
+recon      &   1{,}641 & 92.4 & 61.2 & \textbf{73.7} \\
+dos        & 625{,}147 & 74.5 & 52.8 & 61.8 \\
+spoofing   & 119{,}873 &  0.0 &  0.0 & 0.0 \\
+web        &   8{,}143 & 100.0 &  0.1 & 0.3 \\
+bruteforce &      256 &  0.2 &  0.4 & 0.2 \\
+mitm       &      116 &  0.0 &  0.0 & 0.0 \\
+malware    &      103 &  0.0 &  1.0 & 0.0 \\ \midrule
+\textbf{Type accuracy} & \multicolumn{4}{r}{\textbf{44.2\%} (43.1\% strict)} \\
+\textbf{Macro F1 (attacks)} & \multicolumn{4}{r}{19.4\%} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -429,20 +435,13 @@ malware           &      0 &      0 &     37 & —   & 0.000 \\ \midrule
 \subsection{Distribution shift and deployment artifacts}
 \label{subsec:res_artifacts}
 
-Three deployment-specific phenomena, which are not captured by purely offline evaluations, help explain the observed results. The most consequential is the flow-extractor emission delay: under high-rate flooding the ARM node cannot keep up and closes/emits flows late, with a measured median of 163~s (binary) and 216~s (multiclass); the alert thus arrives minutes after the flow began. This is precisely why detection is scored per flow, by flow start (\texttt{flow\_ts}), immune to the displacement, rather than by emission time. The second is the distribution shift in benign traffic. The two features with the highest model gain contribute most to this effect: \texttt{flow\_iat\_min} is typically in the millisecond range in the benign training data but decreases to 1--10~µs during real TCP bursts, while short-lived flows in a high-speed local network yield \texttt{flow\_byts\_s} values substantially higher than those observed during training.
-Although real benign traffic was incorporated into the training set, the remaining distribution shift suggests that the most effective mitigation is to collect benign traffic directly from the target deployment environment. The third phenomenon is an artifact introduced by \textit{NetFlower}. Each TCP connection teardown generates a micro-flow consisting of a single 52-byte packet with zero duration and only the FIN and ACK flags set. Because this traffic pattern is absent from the training data, the classifier consistently assigns it an attack probability of $\sim$84\%. To mitigate this issue, a minimum-packet filter(\texttt{tot\_fwd\_pkts} $\geq 2$) is applied before inference, preventing these micro-flows from reaching the classifier.
+Three deployment phenomena, absent from offline evaluation, help explain the results. The most consequential is a throughput ceiling. At about 1{,}050 flows/s the ARM node cannot process traffic in real time: the inference queue grows to a peak of 456{,}681 flows for the binary pipeline and 495{,}051 for the hierarchical one, RAM rises to 2.5--2.7~GB, and the mean end-to-end latency from capture to classification is 120~s and 352~s respectively, with maxima of 181~s and 550~s. Because the queue is unbounded, no captured flow is dropped, so the overload surfaces as latency and memory rather than packet loss, although the hierarchical session still ended with 26{,}928 flows queued. Scoring by flow start (\texttt{flow\_ts}) makes the detection metrics immune to this displacement, which changes \emph{when} an alert appears, not \emph{which} flow it is. The second phenomenon is a distribution shift in benign traffic: \texttt{flow\_iat\_min} lies in the millisecond range in training but drops to 1--10~µs in real TCP bursts, which argues for capturing benign traffic in the deployment environment itself. The third is a \textit{netflower} artifact: each TCP teardown produces a single-packet FIN/ACK micro-flow scored at $\sim$84\% attack probability, mitigated by a minimum-packet guard before inference.
 
-%Two deployment phenomena, absent from purely offline evaluation, help explain the results and are needed to reproduce the system. The first is the distribution shift in benign traffic: the two highest-gain features account
-%for most of the error, since \texttt{flow\_iat\_min} lies in the millisecond range in benign training data but drops to 1--10~µs in real TCP bursts, and short flows over a fast local network produce \texttt{flow\_byts\_s} far above what was seen in training. Although real benign traffic was incorporated into training, the residual shift indicates that the most complete solution is to capture it in the deployment environment itself. The second is a
-%\textit{netflower} artifact: every TCP connection teardown generates a micro-flow with zero duration, a single 52-byte packet and only the FIN and ACK flags; with no counterpart in training, the model systematically assigns
-%it $\sim$84\% attack confidence. The mitigation is a minimum-packet guard
-%(\texttt{tot\_fwd\_pkts} $\geq 2$) that discards these micro-flows before
-%inference.
 
 \subsection{Binary IDS vs.\ multiclass IDS}
 \label{subsec:res_comp}
 
-Table~\ref{tab:comparison} compares both configurations. The two columns are the two independent testbed sessions, which share the Phase~1 model but generate their own attack traffic, so the Phase~1 metrics differ. The main result is that the cost of adding Phase~2 to the edge node is almost entirely memory: CPU usage is practically identical ($\approx$12\% on average) and the only measurable increment is 53~MB of RAM, about 5\% over the baseline, because Phase~2 inference is amortized by flow tracking, the stage that already dominates processing time. Precision is high in both pipelines (0.986 and 0.992, $+2$~s window). The apparently high FPR does not measure specificity here but the tiny benign denominator under flood-saturated capture. Binary pipelines optimize raw Security Information and Event Management (SIEM) feeds, whereas multiclass configurations provide triage labels at zero CPU or energy cost.
+Table~\ref{tab:comparison} compares both configurations. The two columns are the two independent testbed sessions, which share the Phase~1 model but generate their own attack traffic, so the Phase~1 metrics differ slightly. Adding Phase~2 is far from free on this node. Average CPU rises from 11.8\% to 40.1\% (peaks 44\% to 74\%), average power during attacks from 3.48 to 5.06~W, and the mean end-to-end latency from 120 to 352~s, while peak RAM grows by about 135~MB to 2.66~GB. Batched inference itself is cheap (0.15~ms per flow in Phase~1 and 1.23~ms in Phase~2), so the cost comes from Phase~2 running on the large fraction of flooded traffic that Phase~1 flags, not from the model. Precision is high in both pipelines (98.4\% and 97.0\%, $+2$~s window); the apparently high FPR does not measure specificity here but the tiny benign denominator under flood-saturated capture.
 
 
 \begin{table}[t]
@@ -460,42 +459,34 @@ specificity measure.}
 \textbf{Metric} & \shortstack[r]{\textbf{Binary}\\ \textbf{(Phase~1)}}
                  & \shortstack[r]{\textbf{Multiclass}\\ \textbf{(Phases~1+2)}} \\ \midrule
 \multicolumn{3}{l}{\textit{Binary detection (Phase 1), per flow, $+2$~s window}} \\
-\quad Precision            & \textbf{0.986} & \textbf{0.992} \\
-\quad Recall / TPR         & 0.809          & 0.966 \\
-\quad F1-score             & 0.889          & 0.979 \\
-\quad FPR\rlap{$^\dagger$} & 0.607          & 0.933 \\ \midrule
+\quad Precision            & \textbf{98.4\%} & 97.0\% \\
+\quad Recall / TPR         & 64.3\%         & 64.0\% \\
+\quad F1-score             & 77.8\%         & 77.1\% \\
+\quad Accuracy             & 64.4\%         & 63.5\% \\
+\quad FPR\rlap{$^\dagger$} & 33.2\%         & 47.7\% \\ \midrule
 \multicolumn{3}{l}{\textit{Type classification (Phase 2)}} \\
-\quad Accuracy (type)   & —               & \textbf{60.5\%} \\
-\quad Macro F1          & —               & 0.269 \\
-\quad recon F1          & —               & \textbf{0.861} \\
-\quad dos F1            & —               & 0.753 \\ \midrule
+\quad Accuracy (type)   & —               & \textbf{44.2\%} \\
+\quad Macro F1 (attacks) & —            & 19.4\% \\
+\quad recon F1          & —               & \textbf{73.7\%} \\
+\quad dos F1            & —               & 61.8\% \\ \midrule
 \multicolumn{3}{l}{\textit{Resources (VIM 4, during session)}} \\
-\quad CPU avg / max     & 11.8\% / 28.4\% & 12.1\% / 27.7\% \\
-\quad RAM avg           & 1{,}161 MB      & 1{,}214 MB (\textbf{+53 MB}) \\
-\quad RAM max           & 1{,}286 MB      & 1{,}349 MB (+63 MB) \\ \midrule
-\multicolumn{3}{l}{\textit{Throughput and emission}} \\
-\quad Flows classified  & \textbf{88{,}474} & 47{,}127 \\
-\quad Alerts emitted    & \textbf{71{,}216} & 45{,}529 \\
-\quad Attack traffic    & $\sim$120 flows/s & $\sim$57 flows/s \\
-\quad Emission delay (median) & 163~s & 216~s \\ \midrule
+\quad CPU avg / max     & 11.8\% / 44.0\% & \textbf{40.1\% / 73.9\%} \\
+\quad RAM avg           & 1{,}907 MB      & 2{,}010 MB \\
+\quad RAM max           & 2{,}528 MB      & 2{,}663 MB (\textbf{+135 MB}) \\ \midrule
+\multicolumn{3}{l}{\textit{Throughput and latency}} \\
+\quad Flows classified  & 831{,}154 & 786{,}821 \\
+\quad Alerts emitted    & 526{,}928 & 498{,}066 \\
+\quad Attack traffic    & $\sim$1{,}078 flows/s & $\sim$1{,}021 flows/s \\
+\quad Queue peak        & 456{,}681 & 495{,}051 \\
+\quad Mean e2e latency  & 120~s & \textbf{352~s} \\ \midrule
 \multicolumn{3}{l}{\textit{Estimated energy}} \\
-\quad Avg.\ power (attack) & 3.39~W & 3.40~W \\
-\quad Avg.\ power (idle)   & 2.71~W & 2.72~W \\
-\quad Total energy (band)  & 4{,}209--6{,}410~J & 4{,}253--6{,}478~J \\
+\quad Avg.\ power (attack) & 3.48~W & \textbf{5.06~W} \\
+\quad Avg.\ power (idle)   & 2.76~W & 4.92~W \\
+\quad Total energy (band)  & 4{,}233--6{,}454~J & 6{,}437--9{,}973~J \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-%The central result is that the cost of adding Phase 2 to the edge node is almost entirely memory: CPU usage is practically identical ($\approx$13\% on average) and the only measurable increment is ~50 MB of RAM, about 4\% over the baseline, because Phase 2 inference is amortized by flow tracking, the stage that already dominates processing time. Such information gain concurrently reduces alert volume from 62.9 to 22.1 alerts/s ($2.8\times$ lower). Binary pipelines remain preferable for feeding Security Information and Event Management (SIEM) platforms with raw alerts, whereas multiclass alternatives supply crucial triage type labels at zero additional CPU overhead.
-
-One operational finding conditions these numbers, characterized in
-Section~\ref{subsec:res_artifacts}: under high-rate flooding the ARM node cannot
-process flows in real time and the extractor emits them with a median delay of
-163--216~s. Detection is therefore scored per flow, by flow start
-(\texttt{flow\_ts}): the delay shifts \emph{when} an alert appears, not
-\emph{which} flow it is, so it does not affect the per-flow metrics reported
-here. The phenomenon itself is a capacity limit of the edge node under
-volumetric attack.
 
 The energy consumption in Table~\ref{tab:comparison} is a calibrated estimate,
 not a direct measurement, since the VIM~4 exposes no energy telemetry
@@ -508,36 +499,34 @@ P(t) = P_{idle} + (P_{max} - P_{idle}) \times \text{CPU\%}(t),
 with $P_{idle} = 2.5$~W and $P_{max} = 9.0$~W anchored on the VIM~4 power
 envelope, calibrated at rest and under full load, and integrated over the
 periodic samples ($\sim$3~s), separating attack from idle by the ground-truth
-windows. The resulting sensitivity band is 4{,}209 to 6{,}410~J for the binary
-pipeline and 4{,}253 to 6{,}478~J for the multiclass one. What matters is the
-relative comparison: consumption during attacks is practically the same in
-both pipelines ($\approx$3.4~W), consistent with Phase~2's cost being RAM, not
-CPU.
+windows. The resulting sensitivity band is 4{,}233 to 6{,}454~J for the binary
+pipeline and 6{,}437 to 9{,}973~J for the multiclass one. What matters is the
+relative comparison: the hierarchical pipeline raises average power during
+attacks from 3.48 to 5.06~W, a direct consequence of Phase~2's CPU load under
+flooding rather than a memory-only overhead.
 
 %─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
 \label{sec:conclusion}
 
 This work presented a two-phase hierarchical IDS for IoT environments in 6G
-networks with MEC, from data-pipeline construction to deployment and testbed
-validation on the VIM~4 board. The central contribution is the demonstration
-that the complete pipeline runs within the resource budget of an ARM edge
-node, with the empirical delimitation of where per-flow features stop being
-sufficient. Under the per-flow metric (each flow labelled by the window in which
-it started, immune to the 163--216~s emission delay), the binary IDS reached a
-precision of $\approx$0.99 and a recall of $\approx$0.81 (F1 $\approx$0.89), with
-near-instant detection (0--6~s) strongest on volumetric floods (spoofing recall
-1.00, DoS 0.84--0.95). Low-volume attacks (brute force, MITM, web) produced too
-few flows to be evaluated or were largely missed, an empirical limit the solution
-makes explicit. Phase~2 classified network reconnaissance at F1 = 0.861, at an
-additional cost of only 53~MB of RAM, with no CPU or energy overhead. The
-validation also made the ceiling of the approach explicit: Phase~2 converges
-onto \texttt{dos} the classes whose live behavior is a flood of short,
-high-rate flows, notably spoofing, which dominates 16{,}528 flows. This
-boundary is a result, not a pipeline fault, since
-separating them requires aggregate state across flows that the 55 per-flow
-features do not capture. The reproducible scripts and the trained models are
-available in an open repository\footnote{\url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks}}. Future work involves enriching the feature space with aggregate states across flows, evaluating the IDS against real services and victims to reduce the shift between training and production, mitigating extractor saturation under flood conditions, lowering \texttt{idle\_timeout} to capture short attacks such as \textit{recon} UDP scans, and replacing energy estimates with direct hardware measurements.
+networks with MEC, from data pipeline to deployment and testbed validation on
+the VIM~4 board. Scored per flow, the binary IDS detected volumetric floods
+precisely (spoofing 94\%, DoS 92\%) at a precision of 98\%, while low-volume
+attacks and single-packet floods fall below the 0.9 threshold and lower the
+overall recall to 64\%. Phase~2 separates reconnaissance but merges the other
+flood-like attacks into \texttt{dos}, a boundary of per-flow features rather
+than a pipeline fault. The main operational finding is a throughput ceiling: at
+$\sim$1{,}050 flows/s the VIM~4 cannot keep up and buffers traffic with a
+latency of minutes, and adding Phase~2 roughly triples that latency while
+raising CPU and power, so the hierarchical pipeline as deployed does not sustain
+line-rate detection under volumetric attack on this node. Future work includes
+bounding the queue with load shedding or sampling under overload, parallelizing
+inference across the node's cores, adding aggregate cross-flow features to
+separate flood-like attacks, evaluating against real services to reduce the
+training-to-production shift, and replacing the energy estimate with hardware
+measurements. The scripts and trained models are available in an open
+repository\footnote{\url{https://github.com/luiz-linkezio/A-Hierarchical-Solution-based-on-MEC-and-IoT-for-Cyberattack-Detection-in-6G-Networks}}.
 
 %─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{IEEEtran}

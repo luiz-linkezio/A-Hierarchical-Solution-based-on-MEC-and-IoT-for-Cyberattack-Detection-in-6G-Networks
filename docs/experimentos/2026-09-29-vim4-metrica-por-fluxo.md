@@ -96,17 +96,21 @@ sobre baseline limpo.
 | ddos | 0,47 (18.202) | 1,00 (6.911) | queda em A sob maior taxa de pacotes |
 | recon | 0,58 (3.659) | 0,80 (1.320) | scan do nmap, poucos pacotes/porta |
 | web | 0,03 (240) | 0,14 (240) | majoritariamente perdido |
-| bruteforce | 0,00 (26) | 0,00 (8) | poucos fluxos, não detectado |
-| mitm | 0,00 (4) | 0,00 (3) | poucos fluxos, não detectado |
+| bruteforce | n.a. (26) | n.a. (8) | não avaliável: lista de senhas ausente no PC, reserva de 17 entradas; P1 0,70–0,88 |
+| mitm | n.a. (4) | n.a. (3) | não avaliável: tráfego ICMP, que o netflower não converte em fluxo; os fluxos da janela são o SSH de controle |
 | malware | — (0) | — (0) | não gerou fluxos direcionados ao alvo |
 
 (entre parênteses: nº de fluxos da classe). Tempo até o 1º fluxo detectado
 (janela estrita): dos e spoofing 0,0 s, recon 0,4 s, web 0,6 s, ddos 5,9 s —
 detecção quase instantânea.
 
-**Limite exposto:** ataques de baixo volume (bruteforce, mitm, web) e o malware
-mal geram fluxos sob a carga concorrente de *flood* + saturação do extrator. É um
-limite de captura do nó de borda, não erro do classificador.
+**Falhas do gerador de tráfego (não do detector):** o PC atacante não tinha
+`/usr/share/wordlists/`, então bruteforce (17 senhas) e web (18 caminhos) rodaram
+com listas reserva e geraram pouco tráfego. O MITM envenenou o ARP, mas o tráfego
+pela rota envenenada foi `ping`, e o netflower só parseia TCP e UDP, então nada
+virou fluxo (os floods ICMP de DoS e spoofing também não entram nas contagens).
+Bruteforce e mitm ficam como não avaliáveis nesta execução. Para repetir: instalar
+as listas, gerar tráfego TCP no MITM e fazer o runner abortar se faltar lista.
 
 ---
 
@@ -115,13 +119,14 @@ limite de captura do nó de borda, não erro do classificador.
 | Métrica | Estrita | Calibrada +2 s |
 |---|---|---|
 | Acurácia de tipo | 0,454 | **0,605** |
-| Macro-F1 (ataques) | 0,246 | 0,269 |
+| Macro-F1 (classes avaliáveis) | — | 0,404 |
+| Macro-F1 (n.a. contando como 0) | 0,246 | 0,269 |
 | Acurácia de tipo sobre detectados | 0,583 | 0,631 |
 
 Por classe (calibrada): recon F1 **0,861** (prec 0,99, rec 0,76) — única bem
 separada; dos F1 0,753 (prec 0,62, rec 0,96); **spoofing 100 % → dos** (16.528
 fluxos, o erro dominante — mas classificar *flood* forjado como dos é
-defensavelmente correto); web/bruteforce/mitm colapsam ou têm fluxos demais poucos;
+defensavelmente correto); web colapsa em benigno/dos; bruteforce e mitm não avaliáveis;
 malware 0 fluxos. Confiança do P2: média 0,972 (alta mesmo quando erra em
 spoofing→dos).
 
@@ -153,11 +158,11 @@ Afirmações antigas **derrubadas** e substituídas:
    (calibrada); FPR não é medida de especificidade confiável aqui (denominador
    diminuto sob *flood*).
 2. ~~"≥99 % de recall em bruteforce/web/mitm/spoofing"~~ → só spoofing 1,00;
-   bruteforce/mitm com fluxos insuficientes (não detectados), web 0,03–0,14,
+   bruteforce/mitm não avaliáveis (falha do gerador), web 0,03–0,14,
    malware 0 fluxos.
 3. recon multiclasse F1 0,976 → **0,861** (ainda a única bem separada).
 4. multiclasse acurácia 48,4 % / macro-F1 0,320 → 60,5 % (45,4 % estrita) /
-   0,269.
+   0,404 sobre as classes avaliáveis (0,269 com n.a. = 0).
 5. Atraso de emissão "~80 s" → **163–216 s de mediana** (medido).
 6. **Sobrevive:** custo da Fase 2 = ~+50 MB RAM sem CPU/energia; detecção rápida
    (0–6 s); spoofing→dos.

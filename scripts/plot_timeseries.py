@@ -164,13 +164,13 @@ def render(session_report, ids_log, multiclass, title, out_png):
     print(f"wrote {out_png}  | snapshots={len(t)}  windows={len(windows)}  span={span_end:.0f}s")
 
 if __name__ == "__main__":
-    render(f"{BASE}/logs/session_a_20260929_144008/report_20260929_150624.json",
-           f"{BASE}/logs/session_a_20260929_144008/binary_ids_run_20260929_174024.log",
+    render(f"{BASE}/logs/session_a_20260930_014420/report_20260930_021128.json",
+           f"{BASE}/logs/session_a_20260930_014420/binary_ids_run_20260930_044432.log",
            multiclass=False,
            title="Experimento A — IDS binário (Fase 1) no nó de borda VIM-4",
            out_png=f"{sys.argv[1]}/timeseries_session_a_binary.png")
-    render(f"{BASE}/logs/session_b_20260929_144008/report_20260929_153346.json",
-           f"{BASE}/logs/session_b_20260929_144008/ids_run_20260929_180738.log",
+    render(f"{BASE}/logs/session_b_20260930_014420/report_20260930_023949.json",
+           f"{BASE}/logs/session_b_20260930_014420/ids_run_20260930_051303.log",
            multiclass=True,
            title="Experimento B — IDS hierárquico (Fases 1+2) no nó de borda VIM-4",
            out_png=f"{sys.argv[1]}/timeseries_session_b_multiclass.png")

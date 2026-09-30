@@ -72,11 +72,14 @@ stop_ids() {
   if [ -z "$pid" ]; then echo "[!] sem PID do IDS ${name} (já parado?)"; return 0; fi
   echo "encerrando IDS ${name} (PID ${pid}) com SIGINT..."
   vsudo "kill -INT ${pid} 2>/dev/null || true"
-  for _ in $(seq 1 15); do
+  # Carência longa: sob flood o worker pode ter um backlog grande de fluxos na
+  # fila; ele precisa drená-lo e gravar o [SUMMARY] antes de sair. 15s não
+  # bastava e o IDS acabava morto à força, sem [SUMMARY].
+  for _ in $(seq 1 120); do
     [ "$(ids_alive "$pid")" = DEAD ] && { echo "IDS ${name} parou graciosamente."; return 0; }
     sleep 1
   done
-  echo "[!] IDS ${name} resistiu ao SIGINT — escalando TERM/KILL"
+  echo "[!] IDS ${name} resistiu ao SIGINT (120s) — escalando TERM/KILL"
   vsudo "kill -TERM ${pid} 2>/dev/null || true"; sleep 5
   if [ "$(ids_alive "$pid")" = ALIVE ]; then
     vsudo "kill -KILL ${pid} 2>/dev/null; pkill -KILL -f ${ids} 2>/dev/null || true"; sleep 2
@@ -130,7 +133,7 @@ done
 
 # ── 2. Deploy dos scripts/modelos/constants para a VIM 4 ────────────────────
 say "DEPLOY → VIM 4"
-run "$SCP \"$ROOT/scripts/network_ids.py\" \"$ROOT/scripts/network_binary_ids.py\" \"$ROOT/scripts/calibrate_power.py\" ${VIM_USER}@${TARGET}:${VIM_DIR}/"
+run "$SCP \"$ROOT/scripts/network_ids.py\" \"$ROOT/scripts/network_binary_ids.py\" \"$ROOT/scripts/_ids_worker.py\" \"$ROOT/scripts/calibrate_power.py\" ${VIM_USER}@${TARGET}:${VIM_DIR}/"
 run "$SCP -r \"$ROOT/constants\" ${VIM_USER}@${TARGET}:${VIM_DIR}/"
 run "$SCP \"$ROOT/models/binary_classifier_20260601_001154.pkl\" \"$ROOT/models/multiclass_classifier_20260601_001154.pkl\" ${VIM_USER}@${TARGET}:${VIM_DIR}/models/"
 
