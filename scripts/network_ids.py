@@ -30,7 +30,9 @@ from netflower import capture_live
 
 # Allow importing from the project root (constants package)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))
 
+from _ids_worker import FlowInferenceWorker
 from constants.features import ALL_EXCLUDED_FEATURES, EXCLUDED_FEATURES, FINAL_FEATURES
 from constants.labels import ALL_LABELS, BENIGN_LABELS, MALICIOUS_LABELS
 from constants.power_telemetry import (
@@ -130,6 +132,7 @@ _stats = {
 
 _report_path: str = ""
 _run_start: float = 0.0
+_worker: "FlowInferenceWorker | None" = None
 
 
 def _find_rapl_path() -> str:
@@ -204,6 +207,34 @@ def _report_append(text: str) -> None:
             _f.write(text)
 
 
+def _append_flow_row(flow: dict, verdict_fields: list[str]) -> None:
+    """Grava a linha TSV de um fluxo (ATTACK ou BENIGN) na seção [FLOWS].
+    flow['timestamp'] é a captura do 1º pacote (netflower) — é ela, e não a hora
+    de emissão, que a métrica usa para atribuir o fluxo à janela de ataque."""
+    flow_ts = flow.get("timestamp")
+    flow_ts_str = f"{float(flow_ts):.6f}" if flow_ts is not None else ""
+    cols_tsv = "\t".join(
+        str(flow.get(c, "")) if not isinstance(flow.get(c), float)
+        else f"{flow.get(c):.4g}"
+        for c in _ALERT_COLS
+    )
+    with _stats_lock:
+        _snap = dict(_last_sys_m)
+    sys_tsv = "\t".join([
+        f"{_snap['cpu_pct']:.1f}"              if "cpu_pct"  in _snap else "",
+        f"{_snap['ram_mb']:.0f}"               if "ram_mb"   in _snap else "",
+        f"{_snap['recv_bs'] / 1024:.2f}"       if "recv_bs"  in _snap else "",
+        f"{_snap.get('sent_bs', 0) / 1024:.2f}" if "recv_bs" in _snap else "",
+        f"{_snap['power_w']:.2f}"              if "power_w"  in _snap else "",
+    ])
+    _report_append(
+        f"{datetime.datetime.now().strftime('%H:%M:%S')}\t"
+        f"{flow_ts_str}\t"
+        + "\t".join(verdict_fields)
+        + f"\t{cols_tsv}\t{sys_tsv}\n"
+    )
+
+
 def _init_report(model, input_features: list[str], attack_idx: int,
                  model_p2, p2_input_features: list[str]) -> None:
     global _report_path, _run_start
@@ -228,8 +259,11 @@ def _init_report(model, input_features: list[str], attack_idx: int,
         f"p1_input_features    = {len(input_features)}\n"
         f"p2_classes           = {list(model_p2.classes_)}\n"
         f"p2_input_features    = {len(p2_input_features)}\n\n"
-        f"[ALERTS]\n"
-        f"# timestamp\tp1_conf\tp2_label\tp2_conf\t"
+        f"[FLOWS]\n"
+        f"# timestamp = hora de emissão (VIM, HH:MM:SS); flow_ts = captura do 1º pacote\n"
+        f"# (epoch, s) — base da métrica, imune ao atraso de processamento/timeout.\n"
+        f"# Uma linha por fluxo: verdict ATTACK (p1 >= threshold) ou BENIGN (sem P2: '-').\n"
+        f"# timestamp\tflow_ts\tverdict\tp1_conf\tp2_label\tp2_conf\tp2_low_conf\t"
         + "\t".join(_ALERT_COLS)
         + "\tcpu_pct\tram_mb\tnet_recv_kbs\tnet_sent_kbs\tpower_w\n"
     )
@@ -251,6 +285,8 @@ def _finalize_report() -> None:
         p2_low_conf      = _stats["p2_low_confidence"]
         avg_e2e          = _stats["total_e2e_ms"] / flows if flows else 0.0
         max_e2e          = _stats["max_e2e_ms"]
+        q_max            = _worker.max_queue_depth if _worker else 0
+        q_resid          = _worker.queue_depth() if _worker else 0
         n                = _stats["sys_samples"]
         cpu_avg          = _stats["cpu_total_pct"] / n if n else 0.0
         cpu_max          = _stats["cpu_max_pct"]
@@ -294,6 +330,8 @@ def _finalize_report() -> None:
         f"p2_low_confidence    = {p2_low_conf:,}\n"
         f"avg_e2e_ms           = {avg_e2e:.2f}\n"
         f"max_e2e_ms           = {max_e2e:.2f}\n"
+        f"queue_max_depth      = {q_max:,}\n"
+        f"queue_residual       = {q_resid:,}\n"
         f"\n[SYSTEM_METRICS]\n"
         f"cpu_avg_pct          = {cpu_avg:.1f}\n"
         f"cpu_max_pct          = {cpu_max:.1f}\n"
@@ -367,6 +405,10 @@ def _stats_printer(stop_event: threading.Event) -> None:
         if "freqs" in sys_m:
             fr = "/".join(f"{v}" for v in sys_m["freqs"].values())
             parts.append(f"Freq {fr}MHz")
+        if _worker is not None:
+            # Backlog da fila de inferência, gravado a cada tick: sobrevive a um
+            # kill que impeça o [SUMMARY], preservando o pico de backlog.
+            parts.append(f"Queue {_worker.queue_depth()} (max {_worker.max_queue_depth})")
         if parts:
             sys_line = " | ".join(parts)
             log.info("[SYS]   %s", sys_line)
@@ -429,124 +471,99 @@ def get_attack_class_index(model) -> int:
 # Per-flow inference
 # ---------------------------------------------------------------------------
 
-def make_flow_handler(model, input_features: list[str], attack_idx: int,
-                      model_p2, p2_input_features: list[str]):
-    """Return an on_flow callback that runs Phase 1 → Phase 2 in sequence."""
+def _align_batch(flows: list[dict], features: list[str]) -> pd.DataFrame:
+    """Um DataFrame por LOTE, com as colunas do modelo (faltantes viram 0)."""
+    df = pd.DataFrame(flows)
+    for col in features:
+        if col not in df.columns:
+            df[col] = 0
+    return df[features]
 
-    def _align(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
-        """Fill any feature columns missing from the flow dict with 0."""
-        missing = [c for c in features if c not in df.columns]
-        if missing:
-            log.debug("Filling %d missing feature column(s) with 0: %s", len(missing), missing)
-            for col in missing:
-                df[col] = 0
-        return df[features]
 
-    def on_flow(flow: dict) -> None:
-        t_entry = time.perf_counter()
-        with _stats_lock:
-            _stats["flows"] += 1
+def make_batch_processor(model, input_features: list[str], attack_idx: int,
+                         model_p2, p2_input_features: list[str]):
+    """Processa um lote de fluxos em duas fases, cada uma em batch (lotes por
+    fase): P1 no lote inteiro, P2 só no subconjunto que alertou. Chamado pelo
+    worker, fora da thread de captura."""
 
-        try:
-            df = pd.DataFrame([flow])
+    def process_batch(batch: list) -> None:
+        flows = [flow for _, flow in batch]
+        n = len(flows)
 
-            # ------------------------------------------------------------------
-            # Phase 1 — Binary: benign vs. attack
-            # ------------------------------------------------------------------
-            X1 = _align(df.copy(), input_features)
+        # ------------------------------------------------------------------
+        # Fase 1 — binária, no lote inteiro
+        # ------------------------------------------------------------------
+        X1 = _align_batch(flows, input_features)
+        t0 = time.perf_counter()
+        probs = model.predict_proba(X1)[:, attack_idx]
+        p1_ms = (time.perf_counter() - t0) * 1000
+        p1_per_flow_ms = p1_ms / n if n else 0.0
 
+        alert_idx = [i for i, p in enumerate(probs) if p >= THRESHOLD]
+
+        # ------------------------------------------------------------------
+        # Fase 2 — multiclasse, só nos fluxos que a Fase 1 marcou
+        # ------------------------------------------------------------------
+        p2_labels: dict = {}   # índice no lote -> (label, conf, low_conf)
+        p2_ms = 0.0
+        if alert_idx:
+            X2 = _align_batch([flows[i] for i in alert_idx], p2_input_features)
             t0 = time.perf_counter()
-            prob = model.predict_proba(X1)[0, attack_idx]
-            p1_ms = (time.perf_counter() - t0) * 1000
-
-            with _stats_lock:
-                _stats["total_inference_ms"] += p1_ms
-                if p1_ms > _stats["max_inference_ms"]:
-                    _stats["max_inference_ms"] = p1_ms
-
-            if prob < THRESHOLD:
-                return  # benign — nothing more to do
-
-            # ------------------------------------------------------------------
-            # Phase 2 — Multi-class: attack type classification
-            # ------------------------------------------------------------------
-            with _stats_lock:
-                _stats["alerts"] += 1
-
-            X2 = _align(df.copy(), p2_input_features)
-
-            t0 = time.perf_counter()
-            p2_proba = model_p2.predict_proba(X2)[0]
+            p2_proba = model_p2.predict_proba(X2)
             p2_ms = (time.perf_counter() - t0) * 1000
+            for row_i, i in enumerate(alert_idx):
+                pr = p2_proba[row_i]
+                conf = float(pr.max())
+                label = str(model_p2.classes_[pr.argmax()])
+                p2_labels[i] = (label, conf, conf < PHASE2_CONFIDENCE_THRESHOLD)
+        p2_per_flow_ms = p2_ms / len(alert_idx) if alert_idx else 0.0
 
-            p2_conf = float(p2_proba.max())
-            p2_label = str(model_p2.classes_[p2_proba.argmax()])
-            low_conf = p2_conf < PHASE2_CONFIDENCE_THRESHOLD
-
-            with _stats_lock:
-                _stats["p2_total_inference_ms"] += p2_ms
-                if p2_ms > _stats["p2_max_inference_ms"]:
-                    _stats["p2_max_inference_ms"] = p2_ms
-                if low_conf:
+        now = time.perf_counter()
+        with _stats_lock:
+            _stats["flows"] += n
+            _stats["alerts"] += len(alert_idx)
+            _stats["total_inference_ms"] += p1_ms
+            if p1_per_flow_ms > _stats["max_inference_ms"]:
+                _stats["max_inference_ms"] = p1_per_flow_ms
+            _stats["p2_total_inference_ms"] += p2_ms
+            if p2_per_flow_ms > _stats["p2_max_inference_ms"]:
+                _stats["p2_max_inference_ms"] = p2_per_flow_ms
+            for label, _conf, low in p2_labels.values():
+                if low:
                     _stats["p2_low_confidence"] += 1
                 else:
-                    _stats["p2_classifications"][p2_label] = (
-                        _stats["p2_classifications"].get(p2_label, 0) + 1
+                    _stats["p2_classifications"][label] = (
+                        _stats["p2_classifications"].get(label, 0) + 1
                     )
-
-            # ------------------------------------------------------------------
-            # Logging
-            # ------------------------------------------------------------------
-            row = pd.Series(flow)
-            p2_label_display = f"{p2_label}" if not low_conf else f"LOW_CONF→P3 (best: {p2_label})"
-
-            if VERBOSE_ALERTS:
-                log.warning(
-                    "[ALERT] Attack detected — P1 conf %.1f%% | P2 label: %s (%.1f%%) | "
-                    "P1 %.2f ms | P2 %.2f ms\n%s",
-                    prob * 100, p2_label_display, p2_conf * 100, p1_ms, p2_ms,
-                    row.to_string(),
-                )
-            else:
-                log.warning(
-                    "[ALERT] Attack detected — P1 conf %.1f%% | P2 label: %s (%.1f%%) | "
-                    "P1 %.2f ms | P2 %.2f ms",
-                    prob * 100, p2_label_display, p2_conf * 100, p1_ms, p2_ms,
-                )
-
-            cols_tsv = "\t".join(
-                str(row.get(c, "")) if not isinstance(row.get(c), float)
-                else f"{row.get(c):.4g}"
-                for c in _ALERT_COLS
-            )
-            with _stats_lock:
-                _snap = dict(_last_sys_m)
-            sys_tsv = "\t".join([
-                f"{_snap['cpu_pct']:.1f}"              if "cpu_pct"  in _snap else "",
-                f"{_snap['ram_mb']:.0f}"               if "ram_mb"   in _snap else "",
-                f"{_snap['recv_bs'] / 1024:.2f}"       if "recv_bs"  in _snap else "",
-                f"{_snap.get('sent_bs', 0) / 1024:.2f}" if "recv_bs" in _snap else "",
-                f"{_snap['power_w']:.2f}"              if "power_w"  in _snap else "",
-            ])
-            _report_append(
-                f"{datetime.datetime.now().strftime('%H:%M:%S')}\t"
-                f"{prob:.1%}\t"
-                f"{p2_label_display}\t"
-                f"{p2_conf:.1%}\t"
-                f"{cols_tsv}\t"
-                f"{sys_tsv}\n"
-            )
-
-        except Exception as e:
-            log.error("Inference failed on flow: %s", e)
-        finally:
-            e2e_ms = (time.perf_counter() - t_entry) * 1000
-            with _stats_lock:
+            for t_arrival, _ in batch:
+                e2e_ms = (now - t_arrival) * 1000
                 _stats["total_e2e_ms"] += e2e_ms
                 if e2e_ms > _stats["max_e2e_ms"]:
                     _stats["max_e2e_ms"] = e2e_ms
 
-    return on_flow
+        for i, (_, flow) in enumerate(batch):
+            if i in p2_labels:
+                label, conf, low = p2_labels[i]
+                _append_flow_row(flow, [
+                    "ATTACK", f"{probs[i]:.3%}", label, f"{conf:.1%}", str(int(low)),
+                ])
+            else:
+                # Benigno também vai para o log: sem ele não há FN/TN por fluxo.
+                _append_flow_row(flow, ["BENIGN", f"{probs[i]:.3%}", "-", "-", "-"])
+
+        if VERBOSE_ALERTS:
+            for i in alert_idx:
+                label, conf, low = p2_labels[i]
+                disp = label if not low else f"LOW_CONF→P3 (best: {label})"
+                log.warning("[ALERT] P1 %.1f%% | P2 %s (%.1f%%)\n%s",
+                            probs[i] * 100, disp, conf * 100, pd.Series(flows[i]).to_string())
+        elif alert_idx:
+            log.warning("[BATCH] %d fluxos, %d alertas | P1 %.2f ms (%.3f/fluxo) "
+                        "P2 %.2f ms (%.3f/fluxo) | fila %d",
+                        n, len(alert_idx), p1_ms, p1_per_flow_ms, p2_ms, p2_per_flow_ms,
+                        _worker.queue_depth() if _worker else 0)
+
+    return process_batch
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +571,7 @@ def make_flow_handler(model, input_features: list[str], attack_idx: int,
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    global _worker
     # Phase 1
     model = load_model(MODEL_PATH)
     input_features = get_input_features(model)
@@ -570,7 +588,13 @@ def main() -> None:
 
     _init_report(model, input_features, attack_idx, model_p2, p2_input_features)
 
-    on_flow = make_flow_handler(model, input_features, attack_idx, model_p2, p2_input_features)
+    # Worker de inferência: o callback de captura só enfileira; a inferência em
+    # lote (P1 no lote, P2 nos alertas) roda nesta thread separada.
+    process_batch = make_batch_processor(
+        model, input_features, attack_idx, model_p2, p2_input_features
+    )
+    _worker = FlowInferenceWorker(process_batch)
+    _worker.start()
 
     stop_printer = threading.Event()
     printer_thread = threading.Thread(target=_stats_printer, args=(stop_printer,), daemon=True)
@@ -578,7 +602,7 @@ def main() -> None:
 
     handle = capture_live(
         INTERFACE,
-        on_flow=on_flow,
+        on_flow=_worker.submit,
         idle_timeout=IDLE_TIMEOUT,
         flow_timeout=FLOW_TIMEOUT,
     )
@@ -596,8 +620,17 @@ def main() -> None:
             time.sleep(1)
 
     except KeyboardInterrupt:
+        # Ordem importa: parar a captura primeiro faz flush_all enfileirar os
+        # últimos fluxos; só então drenamos o worker, para não perder nada.
         handle.stop()
-        log.info("Interrupted — stopping capture.")
+        log.info("Interrupted — stopping capture, draining inference queue.")
+        # Dreno completo: espera a fila esvaziar por inteiro antes do [SUMMARY],
+        # para que todo fluxo capturado seja avaliado (residual = 0). Sob flood
+        # isso pode levar minutos; a guarda de estagnação do worker aborta só se
+        # a inferência emperrar de vez. A carência do runner acompanha esse prazo.
+        residual = _worker.stop(join_timeout=None)
+        if residual:
+            log.warning("Encerrado com %d fluxos ainda na fila (dreno abortado por estagnação).", residual)
         stop_printer.set()
         printer_thread.join(timeout=3)
         _finalize_report()
